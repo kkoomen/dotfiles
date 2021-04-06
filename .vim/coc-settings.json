@@ -1,0 +1,77 @@
+{
+  "diagnostic.refreshAfterSave": true,
+  "diagnostic.refreshOnInsertMode": true,
+  "diagnostic.errorSign": "➜",
+  "diagnostic.warningSign": "➜",
+  "diagnostic.infoSign": "➜",
+  "diagnostic.hintSign": "➜",
+  "suggest.maxCompleteItemCount": 15,
+  "suggest.minTriggerInputLength": 2,
+  "python.linting.pylintEnabled": false,
+  "python.linting.pydocstyleEnabled": true,
+  "python.linting.enabled": true,
+  "python.jediEnabled": false,
+  "python.analysis.logLevel": "Warning",
+  "suggest.completionItemKindLabels": {
+    "keyword": "keyword",
+    "variable": "variable",
+    "value": "value",
+    "operator": "operator",
+    "function": "function",
+    "reference": "reference",
+    "constant": "constant",
+    "method": "method",
+    "struct": "struct",
+    "class": "class",
+    "interface": "interface",
+    "text": "text",
+    "enum": "enum",
+    "enumMember": "enumMember",
+    "module": "module",
+    "color": "color",
+    "property": "property",
+    "field": "field",
+    "unit": "unit",
+    "event": "event",
+    "file": "file",
+    "folder": "folder",
+    "snippet": "snippet",
+    "typeParameter": "typeParameter",
+    "default": "default"
+  },
+  "coc.preferences.colorSupport": false,
+  "solargraph.diagnostics": true,
+  "eslint.autoFix": true,
+  "eslint.autoFixOnSave": true,
+  "eslint.filetypes": [
+    "javascript",
+    "javascript.jsx",
+    "javascriptreact",
+    "javascript.tsx",
+    "typescriptreact",
+    "typescript",
+    "html",
+    "vue"
+  ],
+  "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": true,
+  "languageserver": {
+    "ccls": {
+      "command": "ccls",
+      "filetypes": ["c", "cpp", "cuda", "objc", "objcpp"],
+      "rootPatterns": [".ccls", "compile_commands.json", ".git/"],
+      "initializationOptions": {
+        "clang": {
+          "extraArgs": [
+            // For MacOS 10.14+ an install of the correct headers is required.
+            // $ sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -allowUntrusted -target /
+            "-isystem/usr/include"
+          ],
+          "resourceDir": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/11.0.0/include"
+        },
+        "cache": {
+          "directory": "/tmp/ccls"
+        }
+      }
+    }
+  }
+}
