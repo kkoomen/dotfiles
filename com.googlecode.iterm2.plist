@@ -1728,7 +1728,7 @@ Reset</string>
 			<key>Non-ASCII Ligatures</key>
 			<true/>
 			<key>Normal Font</key>
-			<string>VictorMonoNerdFontCompleteM-Medium 14</string>
+			<string>JetBrainsMono-Regular 14</string>
 			<key>Only The Default BG Color Uses Transparency</key>
 			<false/>
 			<key>Open Toolbelt</key>
