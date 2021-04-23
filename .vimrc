@@ -42,6 +42,7 @@ set laststatus=2
 set noshowmode
 set showtabline=2
 set nofsync
+set diffopt+=vertical
 
 " Make our custom aliases available within a non-interactive vim.
 " -----------------------------------------------------------------------------
@@ -135,6 +136,7 @@ augroup javascript
   autocmd BufRead,BufNewFile *.mdx,*.plop setlocal filetype=javascript
   autocmd BufRead,BufNewFile *.tsx setlocal filetype=typescript.jsx
   autocmd FileType coffee setlocal filetype=javascript.coffee
+  autocmd BufRead,BufNewFile *.prisma setlocal filetype=graphql
 augroup END
 
 augroup rc
@@ -439,6 +441,24 @@ command! -nargs=0 BP :let @+=expand('%:p') | echo @*
 " Set the path of the current buffer relative to its git diretory to the
 " system clipboard. 'GBP' refers for 'Git Buffer Path'.
 command! -nargs=0 GBP :let @+=<SID>GetRelativeBufferPathInGitDirectory() | echo @*
+
+" Git Blame
+"
+" current line
+" :GB
+"
+" range
+" :7,13GB
+" :,+5GB
+" :?foo?,$GB
+" :'<,'>GB
+"
+" full buffer
+" :%GB
+"
+" earlier history
+" :GB HEAD~1
+command! -nargs=? -range GB echo join(systemlist("git -C " . shellescape(expand('%:p:h')) . " blame -L <line1>,<line2> <args> -- " . expand('%:t')), "\n")
 
 " Open help menu in a 80-column vertical window.
 command! -nargs=* -complete=help H call <SID>HelpWindow('<args>')
@@ -975,23 +995,6 @@ autocmd BufEnter * if tabpagenr('$') == 1 && winnr('$') == 1 && exists('b:NERDTr
 nnoremap <C-n> :NERDTreeToggle<CR>
 
 " }}}
-" Plugins: cht.sh {{{
-
-let g:CheatSheetDoNotMap=1
-
-" Next
-nnoremap <script> <silent> <leader>cnq :call cheat#navigate(1,'Q')<CR>
-vnoremap <script> <silent> <leader>cnq :call cheat#navigate(1,'Q')<CR>
-nnoremap <script> <silent> <leader>cna :call cheat#navigate(1, 'A')<CR>
-vnoremap <script> <silent> <leader>cna :call cheat#navigate(1, 'A')<CR>
-
-" Prev
-nnoremap <script> <silent> <leader>cpq :call cheat#navigate(-1,'Q')<CR>
-vnoremap <script> <silent> <leader>cpq :call cheat#navigate(-1,'Q')<CR>
-nnoremap <script> <silent> <leader>cpa :call cheat#navigate(-1,'A')<CR>
-vnoremap <script> <silent> <leader>cpa :call cheat#navigate(-1,'A')<CR>
-
-" }}}
 " Plugins {{{
 
 call plug#begin('~/.vim/plugged')
@@ -1000,7 +1003,6 @@ Plug 'SirVer/ultisnips'
 Plug 'Yggdroot/indentLine'
 Plug 'alvan/vim-closetag'
 Plug 'arthurxavierx/vim-caser'
-Plug 'dbeniamine/cheat.sh-vim'
 Plug 'editorconfig/editorconfig-vim'
 Plug 'godlygeek/tabular'
 Plug 'honza/vim-snippets'
@@ -1074,3 +1076,17 @@ highlight! MatchParen  guibg=#606060 guifg=#E5C07B
 highlight! Folded ctermfg=8 ctermbg=0 guifg=#666666 guibg=#303030
 
 " }}}
+function! Diff(spec)
+vertical new
+setlocal bufhidden=wipe buftype=nofile nobuflisted noswapfile
+    let cmd = "++edit #"
+if len(a:spec)
+    let cmd = "!git -C " . shellescape(fnamemodify(finddir('.git', '.;'), ':p:h:h')) . " show " . a:spec . ":#"
+endif
+execute "read " . cmd
+silent 0d_
+diffthis
+wincmd p
+diffthis
+endfunction
+command! -nargs=? Diff call Diff(<q-args>)
