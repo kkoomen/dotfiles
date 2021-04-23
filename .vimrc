@@ -222,6 +222,24 @@ function s:HelpWindow(args) abort
   endif
 endfunction
 
+function s:GitBlame(line1, line2, args) abort
+  let l:msg = join(systemlist("git -C " . shellescape(expand('%:p:h')) . " blame -L " . a:line1 . "," . a:line2 . " " . a:args . " --date " . '"format:%Y-%m-%d %H:%M:%S"' . " -- " . expand('%:t')), "\n")
+  if stridx(l:msg, 'fatal') == -1
+    " Regex groups:
+    " \1: revision
+    " \2: author
+    " \3: time
+    " \4: line number
+    " \5: line contents
+    echo substitute(
+          \ l:msg,
+          \ '\([0-9a-f]\+\) (\(.\{-}\) \(\d\+-\d\+-\d\+ \d\+:\d\+:\d\+\) \(\d\+\))\%( \(.*\)\)\?',
+          \ '[\1] last modified by \2 at \3',
+          \ 'g'
+          \ )
+  endif
+endfunction
+
 function! s:SpaceToTab(str) abort
   let l:remainder = len(a:str) % shiftwidth()
   return repeat("\t", len(a:str) / shiftwidth()) . repeat(' ', l:remainder)
@@ -458,7 +476,8 @@ command! -nargs=0 GBP :let @+=<SID>GetRelativeBufferPathInGitDirectory() | echo 
 "
 " earlier history
 " :GB HEAD~1
-command! -nargs=? -range GB echo join(systemlist("git -C " . shellescape(expand('%:p:h')) . " blame -L <line1>,<line2> <args> -- " . expand('%:t')), "\n")
+command! -nargs=? -range GB call <SID>GitBlame('<line1>', '<line2>', '<args>')
+
 
 " Open help menu in a 80-column vertical window.
 command! -nargs=* -complete=help H call <SID>HelpWindow('<args>')
@@ -1076,17 +1095,3 @@ highlight! MatchParen  guibg=#606060 guifg=#E5C07B
 highlight! Folded ctermfg=8 ctermbg=0 guifg=#666666 guibg=#303030
 
 " }}}
-function! Diff(spec)
-vertical new
-setlocal bufhidden=wipe buftype=nofile nobuflisted noswapfile
-    let cmd = "++edit #"
-if len(a:spec)
-    let cmd = "!git -C " . shellescape(fnamemodify(finddir('.git', '.;'), ':p:h:h')) . " show " . a:spec . ":#"
-endif
-execute "read " . cmd
-silent 0d_
-diffthis
-wincmd p
-diffthis
-endfunction
-command! -nargs=? Diff call Diff(<q-args>)
