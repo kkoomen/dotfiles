@@ -1015,11 +1015,6 @@ autocmd BufEnter * if tabpagenr('$') == 1 && winnr('$') == 1 && exists('b:NERDTr
 nnoremap <C-n> :NERDTreeToggle<CR>
 
 " }}}
-" Plugins: Rainbow {{{
-
-let g:rainbow_active = 1
-
-" }}}
 " Plugins {{{
 
 call plug#begin('~/.vim/plugged')
