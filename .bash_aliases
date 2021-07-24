@@ -15,6 +15,7 @@ alias screen='screen -U'
 alias getsubs-zh='subliminal download -s -f -l zh'
 alias getsubs='subliminal download -s -f -l en'
 alias mpv-16-9='mpv --video-aspect-override=16:9'
+alias brew='arch -x86_64 brew'
 
 # NETWORK
 alias xip="curl ifconfig.me"
