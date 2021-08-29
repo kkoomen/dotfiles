@@ -97,8 +97,8 @@ apps=(
   git
 
   # Development: C
-  # gcc
-  # llvm
+  ccls
+  llvm
 
   # Terminal
   vim

@@ -79,6 +79,11 @@ function cut-mp3 {
   ffmpeg -i "$1" -ss "$3" -to "$4" -c copy "${2:-$1}"
 }
 
+function 4digits {
+  n=$((1000 + RANDOM % 9999))
+  echo ${n:1:4}
+}
+
 function weather {
   langcode=$(curl -s ipinfo.io/country)
   curl wttr.in/~$langcode
