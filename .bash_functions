@@ -81,7 +81,7 @@ function cut-mp3 {
 
 function 4digits {
   n=$((1000 + RANDOM % 9999))
-  echo ${n:1:4}
+  echo ${n:0:4}
 }
 
 function weather {
