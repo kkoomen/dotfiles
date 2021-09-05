@@ -1100,13 +1100,13 @@ Reset</string>
 				<key>Alpha Component</key>
 				<real>1</real>
 				<key>Blue Component</key>
-				<real>0.21191531419754028</real>
+				<real>0.211578369140625</real>
 				<key>Color Space</key>
-				<string>Calibrated</string>
+				<string>sRGB</string>
 				<key>Green Component</key>
-				<real>0.21183812618255615</real>
+				<real>0.211578369140625</real>
 				<key>Red Component</key>
-				<real>0.21519744396209717</real>
+				<real>0.211578369140625</real>
 			</dict>
 			<key>Ansi 1 Color</key>
 			<dict>
@@ -1990,7 +1990,7 @@ Reset</string>
 			<key>Use Underline Color</key>
 			<false/>
 			<key>Vertical Spacing</key>
-			<real>1.5</real>
+			<real>1.7</real>
 			<key>Visual Bell</key>
 			<false/>
 			<key>Window Type</key>
