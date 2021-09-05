@@ -98,6 +98,9 @@ export PS1="\$([[ \$? == 0 ]] && echo \"$PS1_NORMAL\" || echo \"$PS1_ERROR\")"
 export PATH="/usr/local/bin:$PATH"
 export PATH="/usr/local/sbin:$PATH"
 
+# -- PATH: Java
+ export PATH="$PATH:$(/usr/libexec/java_home)"
+
 # -- PATH: GOLANG
 export GOPATH="$HOME/tech/go"
 export GOROOT="$BREW_PREFIX/opt/go/libexec"

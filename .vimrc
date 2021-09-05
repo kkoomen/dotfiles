@@ -43,6 +43,7 @@ set noshowmode
 set showtabline=2
 set nofsync
 set diffopt+=vertical
+set shell=/bin/bash
 
 " Make our custom aliases available within a non-interactive vim.
 " -----------------------------------------------------------------------------
@@ -863,7 +864,7 @@ let g:coc_global_extensions = [
       \ 'coc-tsserver',
       \ 'coc-html',
       \ 'coc-css',
-      \ 'coc-python',
+      \ 'coc-pyright',
       \ 'coc-phpls',
       \ 'coc-yaml',
       \ 'coc-json',
@@ -1024,7 +1025,6 @@ Plug 'Yggdroot/indentLine'
 Plug 'alvan/vim-closetag'
 Plug 'arthurxavierx/vim-caser'
 Plug 'editorconfig/editorconfig-vim'
-Plug 'frazrepo/vim-rainbow'
 Plug 'godlygeek/tabular'
 Plug 'honza/vim-snippets'
 Plug 'itchyny/lightline.vim'
