@@ -11,8 +11,6 @@ alias yt-dl='cd ~/NewMusic && youtube-dl --extract-audio --audio-format mp3 -o "
 alias make-tar="tar -czvf"
 alias rsync="rsync -azh --inplace --no-whole-file -P --stats --timeout=120"
 alias gr='rg --column --line-number --no-heading --fixed-strings --ignore-case --follow --hidden --glob "!.git/*" --color "always" --'
-alias screen='screen -U'
-alias getsubs-zh='subliminal download -s -f -l zh'
 alias getsubs='subliminal download -s -f -l en'
 alias mpv-16-9='mpv --video-aspect-override=16:9'
 alias brew='arch -x86_64 brew'

@@ -309,9 +309,6 @@ function s:CSSFormat() abort
   " Add lines in-between closing bracket and variables.
   keepjumps call execute('%s/\(}\)\%(\_[[:space:]]\{-}\$\)\@=/\1\r/g', 'silent!')
 
-  " Add lines before comments.
-  keepjumps call execute('%s/^\(\(\/\/.\{-}\n\)\@<!\/\/\|\/\*\)/\r\1/g', 'silent!')
-
   " Add lines in-between @import and other expressions starting with '@'.
   keepjumps call execute('%s/}\n@\([[:alpha:]]\+\)/}\r\r@\1/g', 'silent!')
 
@@ -876,6 +873,7 @@ let g:coc_global_extensions = [
       \ 'coc-eslint',
       \ 'coc-prettier',
       \ 'coc-clangd',
+      \ 'coc-java',
       \ ]
 
 function! s:show_documentation()
