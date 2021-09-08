@@ -1094,4 +1094,11 @@ call matchadd('ColorColumn', '\%81v.', 100)
 highlight! MatchParen  guibg=#606060 guifg=#E5C07B
 highlight! Folded ctermfg=8 ctermbg=0 guifg=#666666 guibg=#303030
 
+" Additional java highlighting
+let g:java_highlight_all = 1
+let g:java_highlight_functions = 1
+highlight link javaScopeDecl Statement
+highlight link javaType Type
+highlight link javaDocTags PreProc
+
 " }}}
