@@ -43,6 +43,11 @@ export VIRTUAL_ENV_DISABLE_PROMPT=true
 export FZF_DEFAULT_OPTS='--exact'
 export FZF_DEFAULT_COMMAND='rg --files --hidden --follow --glob "!.git/*"'
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_DEFAULT_OPTS=$FZF_DEFAULT_OPTS'
+ --color=fg:#6c748c,bg:#2e3440,hl:#6face4
+ --color=fg+:#c0caf5,bg+:#4c546c,hl+:#68c5cd
+ --color=info:#d5b874,prompt:#d97084,pointer:#a389dd
+ --color=marker:#87bb7c,spinner:#a389dd,header:#87bb7c'
 
 # Don't put duplicate lines or lines starting with space in the history.
 # See bash(1) for more options

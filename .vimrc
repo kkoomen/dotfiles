@@ -803,20 +803,11 @@ noremap <Leader>c :Commits<CR>
 " let g:fzf_layout = { 'window': 'enew' }
 let g:fzf_layout = {'down': '35%'}
 let g:fzf_tags_command = 'ctags --extra=+f -R'
-let g:fzf_colors = {
-      \ 'fg':      ['fg', 'Normal'],
-      \ 'bg':      ['bg', 'Normal'],
-      \ 'hl':      ['fg', 'Comment'],
-      \ 'fg+':     ['fg', 'CursorLine', 'CursorColumn', 'Normal'],
-      \ 'bg+':     ['bg', 'CursorLine', 'CursorColumn'],
-      \ 'hl+':     ['fg', 'Type'],
-      \ 'info':    ['fg', 'PreProc'],
-      \ 'border':  ['fg', 'Ignore'],
-      \ 'prompt':  ['fg', 'Normal'],
-      \ 'pointer': ['fg', 'Type'],
-      \ 'marker':  ['fg', 'Keyword'],
-      \ 'spinner': ['fg', 'Type'],
-      \ 'header':  ['fg', 'Comment'] }
+
+" Hide statusline
+autocmd! FileType fzf set laststatus=0 noshowmode noruler
+  \| autocmd BufLeave <buffer> set laststatus=2 showmode ruler
+
 
 " Use ripgrep with FZF
 " Example usage -> :Find <query>
@@ -1068,16 +1059,16 @@ let g:onedark_color_overrides = {
       \ 'dark_cyan'      : { 'gui': '#68c5cd', 'cterm': 'NONE' },
       \ 'cyan'           : { 'gui': '#68c5cd', 'cterm': 'NONE' },
       \ 'dark_white'     : { 'gui': '#bbbebf', 'cterm': 'NONE' },
-      \ 'white'          : { 'gui': '#bababa', 'cterm': 'NONE' },
-      \ 'black'          : { 'gui': '#303030', 'cterm': 'NONE' },
-      \ 'visual_black'   : { 'gui': '#b7bdc0', 'cterm': 'NONE' },
-      \ 'comment_grey'   : { 'gui': '#868686', 'cterm': 'NONE' },
-      \ 'gutter_fg_grey' : { 'gui': '#666666', 'cterm': 'NONE' },
-      \ 'cursor_grey'    : { 'gui': '#383838', 'cterm': 'NONE' },
-      \ 'visual_grey'    : { 'gui': '#474646', 'cterm': 'NONE' },
-      \ 'menu_grey'      : { 'gui': '#404040', 'cterm': 'NONE' },
-      \ 'special_grey'   : { 'gui': '#666666', 'cterm': 'NONE' },
-      \ 'vertsplit'      : { 'gui': '#181A1F', 'cterm': 'NONE' },
+      \ 'white'          : { 'gui': '#a9b1d6', 'cterm': 'NONE' },
+      \ 'black'          : { 'gui': '#2e3440', 'cterm': 'NONE' },
+      \ 'comment_grey'   : { 'gui': '#5c647c', 'cterm': 'NONE' },
+      \ 'gutter_fg_grey' : { 'gui': '#4c546c', 'cterm': 'NONE' },
+      \ 'cursor_grey'    : { 'gui': '#2a303c', 'cterm': 'NONE' },
+      \ 'visual_black'   : { 'gui': '#a9b1d6', 'cterm': 'NONE' },
+      \ 'visual_grey'    : { 'gui': '#282e3a', 'cterm': 'NONE' },
+      \ 'menu_grey'      : { 'gui': '#3B414D', 'cterm': 'NONE' },
+      \ 'special_grey'   : { 'gui': '#a9b1d6', 'cterm': 'NONE' },
+      \ 'vertsplit'      : { 'gui': '#a9b1d6', 'cterm': 'NONE' },
       \}
 
 set background=dark
