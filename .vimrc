@@ -996,15 +996,6 @@ let g:UltiSnipsSnippetDirectories = ['UltiSnips']
 let g:caser_prefix = 'ac'
 
 " }}}
-" Plugins: NERDTree {{{
-
-let g:NERDTreeWinSize = 50
-let g:NERDTreeShowHidden = 1
-autocmd BufEnter * if tabpagenr('$') == 1 && winnr('$') == 1 && exists('b:NERDTree') && b:NERDTree.isTabTree() |
-      \ quit | endif
-nnoremap <C-n> :NERDTreeToggle<CR>
-
-" }}}
 " Plugins {{{
 
 call plug#begin('~/.vim/plugged')
@@ -1028,11 +1019,8 @@ Plug 'mengelbrecht/lightline-bufferline'
 Plug 'mileszs/ack.vim'
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 Plug 'pechorin/any-jump.vim'
-Plug 'preservim/nerdtree'
-Plug 'ryanoasis/vim-devicons'
 Plug 'sheerun/vim-polyglot'
 Plug 'sickill/vim-pasta'
-Plug 'tiagofumo/vim-nerdtree-syntax-highlight'
 Plug 'tomtom/tcomment_vim'
 Plug 'tpope/vim-endwise'
 Plug 'tpope/vim-surround'
