@@ -1363,47 +1363,49 @@ Reset</string>
 			<key>Close Sessions On End</key>
 			<true/>
 			<key>Columns</key>
-			<integer>120</integer>
+			<integer>160</integer>
 			<key>Command</key>
 			<string>/bin/bash</string>
+			<key>Cursor Boost</key>
+			<real>0.0</real>
 			<key>Cursor Color</key>
 			<dict>
 				<key>Alpha Component</key>
 				<real>1</real>
 				<key>Blue Component</key>
-				<real>0.78806769847869873</real>
+				<real>0.83921568627450982</real>
 				<key>Color Space</key>
-				<string>Calibrated</string>
+				<string>sRGB</string>
 				<key>Green Component</key>
-				<real>0.78344428539276123</real>
+				<real>0.69411764705882351</real>
 				<key>Red Component</key>
-				<real>0.77435576915740967</real>
+				<real>0.66274509803921566</real>
 			</dict>
 			<key>Cursor Guide Color</key>
 			<dict>
 				<key>Alpha Component</key>
 				<real>0.25</real>
 				<key>Blue Component</key>
-				<real>1</real>
+				<real>0.34356689453125</real>
 				<key>Color Space</key>
-				<string>Calibrated</string>
+				<string>sRGB</string>
 				<key>Green Component</key>
-				<real>0.9100000262260437</real>
+				<real>0.29113226197659975</real>
 				<key>Red Component</key>
-				<real>0.64999997615814209</real>
+				<real>0.26491494569927454</real>
 			</dict>
 			<key>Cursor Text Color</key>
 			<dict>
 				<key>Alpha Component</key>
 				<real>1</real>
 				<key>Blue Component</key>
-				<real>0.21191531419754028</real>
+				<real>0.25098039215686274</real>
 				<key>Color Space</key>
-				<string>Calibrated</string>
+				<string>sRGB</string>
 				<key>Green Component</key>
-				<real>0.21183812618255615</real>
+				<real>0.20392156862745098</real>
 				<key>Red Component</key>
-				<real>0.21519744396209717</real>
+				<real>0.1803921568627451</real>
 			</dict>
 			<key>Cursor Type</key>
 			<integer>2</integer>
@@ -1779,6 +1781,8 @@ Reset</string>
 			<true/>
 			<key>Silence Bell</key>
 			<false/>
+			<key>Smart Cursor Color</key>
+			<true/>
 			<key>Status Bar Layout</key>
 			<dict>
 				<key>advanced configuration</key>
@@ -1980,6 +1984,8 @@ Reset</string>
 			<key>Use Bold Font</key>
 			<false/>
 			<key>Use Bright Bold</key>
+			<false/>
+			<key>Use Cursor Guide</key>
 			<false/>
 			<key>Use Italic Font</key>
 			<false/>
