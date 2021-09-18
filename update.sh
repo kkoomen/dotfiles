@@ -16,6 +16,9 @@ FILES=(
   .bash_profile
   .vimrc
   .inputrc
+  .weechat/logger.conf
+  .weechat/spell.conf
+  .weechat/irc.conf
   .weechat/weechat.conf
   .weechat/buflist.conf
   .gitconfig
@@ -27,8 +30,7 @@ FILES=(
 )
 
 # Files that must exist.
-TOUCH_FILES=(
-)
+TOUCH_FILES=()
 
 # Directories that must exist.
 TOUCH_DIRS=(

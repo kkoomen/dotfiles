@@ -1071,7 +1071,7 @@ colorscheme onedark
 highlight! ColorColumn ctermbg=red ctermfg=white guibg=#BE5046 guifg=#151515
 call matchadd('ColorColumn', '\%81v.', 100)
 
-highlight! MatchParen guibg=#606060 guifg=#E5C07B
+highlight! MatchParen guibg=#A9B1D6 guifg=#2E3440
 highlight! CocErrorSign guifg=#d97084
 highlight! CocWarningSign guifg=#d5b874
 highlight! CocInfoSign guifg=#bbbebf
