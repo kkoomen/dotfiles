@@ -1054,7 +1054,7 @@ let g:onedark_color_overrides = {
       \ 'gutter_fg_grey' : { 'gui': '#4C546C', 'cterm': 'NONE' },
       \ 'cursor_grey'    : { 'gui': '#2A303C', 'cterm': 'NONE' },
       \ 'visual_black'   : { 'gui': '#A9B1D6', 'cterm': 'NONE' },
-      \ 'visual_grey'    : { 'gui': '#282E3A', 'cterm': 'NONE' },
+      \ 'visual_grey'    : { 'gui': '#444b59', 'cterm': 'NONE' },
       \ 'menu_grey'      : { 'gui': '#3B414D', 'cterm': 'NONE' },
       \ 'special_grey'   : { 'gui': '#A9B1D6', 'cterm': 'NONE' },
       \ 'vertsplit'      : { 'gui': '#A9B1D6', 'cterm': 'NONE' },

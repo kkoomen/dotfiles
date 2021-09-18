@@ -1730,7 +1730,7 @@ Reset</string>
 			<key>Non-ASCII Ligatures</key>
 			<true/>
 			<key>Normal Font</key>
-			<string>JetBrainsMono-Medium 14</string>
+			<string>JetBrainsMono-Bold 14</string>
 			<key>Only The Default BG Color Uses Transparency</key>
 			<false/>
 			<key>Open Toolbelt</key>
@@ -1765,13 +1765,13 @@ Reset</string>
 				<key>Alpha Component</key>
 				<real>1</real>
 				<key>Blue Component</key>
-				<real>0.22745098039215686</real>
+				<real>0.3502197265625</real>
 				<key>Color Space</key>
 				<string>sRGB</string>
 				<key>Green Component</key>
-				<real>0.1803921568627451</real>
+				<real>0.2965702426930269</real>
 				<key>Red Component</key>
-				<real>0.15686274509803921</real>
+				<real>0.26974550075829029</real>
 			</dict>
 			<key>Send Code When Idle</key>
 			<false/>
