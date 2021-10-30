@@ -162,7 +162,6 @@ augroup styles
   autocmd FileType php setlocal iskeyword-=-
   autocmd FileType css,less,scss setlocal iskeyword+=.
   autocmd FileType vim setlocal iskeyword+=: foldmethod=marker
-  autocmd FileType html setlocal filetype=php.html
   autocmd FileType text,markdown setlocal spell conceallevel=0
   autocmd FileType json syntax match Comment +\/\/.\+$+
 augroup END
