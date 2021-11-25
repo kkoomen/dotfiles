@@ -158,7 +158,7 @@ augroup styles
   autocmd FileType text,markdown set formatoptions+=t
 
   autocmd BufRead,BufNewFile *.min.* setlocal syntax=off
-  autocmd FileType python,go,apache setlocal tabstop=4 shiftwidth=4 softtabstop=4
+  autocmd FileType java,python,go,apache setlocal tabstop=4 shiftwidth=4 softtabstop=4
   autocmd FileType php setlocal iskeyword-=-
   autocmd FileType css,less,scss setlocal iskeyword+=.
   autocmd FileType vim setlocal iskeyword+=: foldmethod=marker
@@ -1075,6 +1075,7 @@ highlight! CocErrorSign guifg=#d97084
 highlight! CocWarningSign guifg=#d5b874
 highlight! CocInfoSign guifg=#bbbebf
 highlight! CocHintSign guifg=#6face4
+highlight! CocUnusedHighlight guifg=#5C647C
 
 " Additional java highlighting
 let g:java_highlight_all = 1
