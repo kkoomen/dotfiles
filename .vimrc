@@ -510,10 +510,14 @@ command! -nargs=0 PythonAutoflake :call system('autoflake --in-place --remove-un
 " ------------------------------------------------------------------------------
 let g:mapleader = "\<Space>"
 
-" Leader key
-" ------------------------------------------------------------------------------
 " Run 'checktime' when the cursor stops moving.
 au CursorHold,CursorHoldI * checktime
+
+" When going down by arrow or j/k, go down the next line visually.
+map j gj
+map k gk
+map <Down> gj
+map <Up> gk
 
 " Buffers
 " ------------------------------------------------------------------------------
