@@ -8,29 +8,6 @@ esac
 export PATH="/usr/local/bin:$PATH"
 export PATH="/usr/local/sbin:$PATH"
 
-# -- PATH: GOLANG
-export GOPATH="$HOME/tech/go"
-export GOROOT="$BREW_PREFIX/opt/go/libexec"
-export PATH="$GOPATH/bin:$GOROOT/bin:$PATH"
-
-# -- PATH: Ruby
-export PATH="/usr/local/opt/ruby/bin:$PATH"
-
-# -- PATH: Python
-export PATH="$HOME/Library/Python/3.8/bin:$PATH"
-export PATH="$HOME/Library/Python/3.9/bin:$PATH"
-
-
-# -- PATH: PHP
-export PATH="/usr/local/opt/php@7.1/bin:$PATH"
-export PATH="/usr/local/opt/php@7.1/sbin:$PATH"
-
-# -- PATH: LLVM
-# Headers can be found with: g++ -E -x c++ - -v < /dev/null
-# and then look for the section: `#include <...> search starts here:`
-export PATH="/usr/local/Cellar/llvm/12.0.0_1/bin:$PATH"
-export LD_LIBRARY_PATH="/Library/Developer/CommandLineTools/usr/lib:$LD_LIBRARY_PATH"
-
 # Base variable exporting.
 export EDITOR=vim
 export NODE_ENV=development
@@ -104,10 +81,6 @@ PS1_NORMAL="$(tput setaf 7)┌─ \w\[$(tput setaf 3)\]\$(git-branch)\[$(tput se
 PS1_ERROR="$(tput setaf 1)┌─ $(tput setaf 7)\w\[$(tput setaf 3)\]\$(git-branch)\[$(tput setaf 7)\]\$(get-virtualenv)\n\[$(tput setaf 1)\]└──── ➜  \[$(tput setaf 7)\]"
 export PS1="\$([[ \$? == 0 ]] && echo \"$PS1_NORMAL\" || echo \"$PS1_ERROR\")"
 
-# PATH
-export PATH="/usr/local/bin:$PATH"
-export PATH="/usr/local/sbin:$PATH"
-
 # -- PATH: Java
  export PATH="$PATH:$(/usr/libexec/java_home)"
 
@@ -117,18 +90,24 @@ export GOROOT="$BREW_PREFIX/opt/go/libexec"
 export PATH="$GOPATH/bin:$GOROOT/bin:$PATH"
 
 # -- PATH: Ruby
-export PATH="/usr/local/opt/ruby/bin:$PATH"
+# export PATH="/usr/local/opt/ruby/bin:$PATH"
+export PATH="/usr/local/opt/ruby@2.7/bin:$PATH"
+export LDFLAGS="-L/usr/local/opt/ruby@2.7/lib"
+export CPPFLAGS="-I/usr/local/opt/ruby@2.7/include"
+export PKG_CONFIG_PATH="/usr/local/opt/ruby@2.7/lib/pkgconfig"
 
 # -- PATH: Python
-export PATH="$HOME/Library/Python/3.7/bin:$PATH"
+export PATH="$HOME/Library/Python/3.9/bin:$PATH"
 
 # -- PATH: PHP
 export PATH="/usr/local/opt/php/bin:$PATH"
 export PATH="/usr/local/opt/php/sbin:$PATH"
 
 # -- PATH: LLVM
+# Headers can be found with: g++ -E -x c++ - -v < /dev/null
+# and then look for the section: `#include <...> search starts here:`
 export PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include:$PATH"
-export PATH="/usr/local/Cellar/llvm/9.0.0_1/bin:$PATH"
+export PATH="/usr/local/Cellar/llvm/12.0.0_1/bin:$PATH"
 export LD_LIBRARY_PATH="/Library/Developer/CommandLineTools/usr/lib:$LD_LIBRARY_PATH"
 
 # Swift

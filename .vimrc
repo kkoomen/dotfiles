@@ -23,6 +23,7 @@ set lazyredraw
 set clipboard=unnamed
 set autoread
 set nospell
+set spelllang=en,nl
 set scrolloff=4
 set textwidth=80
 set nocompatible
@@ -707,6 +708,7 @@ let g:gutentags_ctags_exclude = [
       \ '*.git', '*.svg', '*.hg',
       \ '*/tests/*',
       \ 'build',
+      \ 'env',
       \ 'dist',
       \ '*sites/*/files/*',
       \ 'bin',
