@@ -635,17 +635,22 @@ let g:license = 'MIT'
 
 let g:templates_user_variables = [
       \   ['FILE_OR_DIRECTORY', 'GetFileOrDirectory'],
+      \   ['DATE_dd_MM_YY', 'Date_ddMMYYYY'],
       \ ]
+
+function! Date_ddMMYYYY()
+  return strftime("%b %d %Y")
+endfunction
 
 function! GetFileOrDirectory()
   " A structure we have with React apps is: dir/index.jsx
   " and if we have this, we want the index.jsx have the directory name.
-  let filename = expand('%:t:r')
-  let directory = expand('%:p:h:t')
-  if filename == 'index'
-    return directory
+  let l:filename = expand('%:t:r')
+  let l:directory = expand('%:p:h:t')
+  if l:filename == 'index'
+    return l:directory
   else
-    return filename
+    return l:filename
   endif
 endfunction
 
@@ -876,6 +881,7 @@ let g:coc_global_extensions = [
       \ 'coc-clangd',
       \ 'coc-java',
       \ 'coc-rust-analyzer',
+      \ 'coc-texlab',
       \ ]
 
 function! s:show_documentation()
