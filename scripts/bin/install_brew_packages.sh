@@ -51,13 +51,6 @@ cask_apps=(
   sequel-pro
 
   # Quicklook
-  qlcolorcode
-  qlstephen
-  qlmarkdown
-  quicklook-json
-  qlimagesize
-  suspicious-package
-  quicklookase
   qlvideo
 )
 

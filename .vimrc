@@ -490,7 +490,7 @@ command! -nargs=0 CSSFormat call <SID>CSSFormat()
 " Convert PHP <= 5.3 syntax array() to [].
 command! -nargs=0 PHPConvertArrays call <SID>PHPConvertArrays()
 
-" Convert PHP <= 5.3 syntax array() to [].
+" Beautify CSS
 command! -nargs=0 CSSBeautify call <SID>CSSBeautify()
 
 " Convert function(){} to () => {}.
@@ -512,7 +512,7 @@ command! -nargs=0 PythonAutoflake :call system('autoflake --in-place --remove-un
 let g:mapleader = "\<Space>"
 
 " Run 'checktime' when the cursor stops moving.
-au CursorHold,CursorHoldI * checktime
+autocmd CursorHold,CursorHoldI * checktime
 
 " When going down by arrow or j/k, go down the next line visually.
 map j gj
@@ -525,6 +525,11 @@ map <Up> gk
 nnoremap <silent> Z :bprev<CR>
 nnoremap <silent> X :bnext<CR>
 nnoremap <silent> Q :bw<CR>
+
+" LaTeX compilation
+" ------------------------------------------------------------------------------
+autocmd BufWritePost *.tex call system('xelatex ' . expand('%:p') . ' &')
+autocmd FileType tex nmap <buffer> <C-O> :!open -a Skim %:r.pdf<CR><CR>
 
 " Moving lines up or down
 " ------------------------------------------------------------------------------

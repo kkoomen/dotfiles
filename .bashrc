@@ -96,6 +96,9 @@ export LDFLAGS="-L/usr/local/opt/ruby@2.7/lib"
 export CPPFLAGS="-I/usr/local/opt/ruby@2.7/include"
 export PKG_CONFIG_PATH="/usr/local/opt/ruby@2.7/lib/pkgconfig"
 
+# -- PATH: MacTex
+export PATH="/usr/local/texlive/2021/bin/universal-darwin:$PATH"
+
 # -- PATH: Python
 export PATH="$HOME/Library/Python/3.9/bin:$PATH"
 
