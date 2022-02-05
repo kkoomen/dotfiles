@@ -529,7 +529,7 @@ nnoremap <silent> Q :bw<CR>
 " LaTeX compilation
 " ------------------------------------------------------------------------------
 autocmd BufWritePost *.tex call system('xelatex ' . expand('%:p') . ' &')
-autocmd FileType tex nmap <buffer> <C-O> :!open -a Skim %:r.pdf<CR><CR>
+autocmd FileType tex nmap <buffer> T :call system('open -a Skim ' . expand('%:r') . '.pdf &')<CR>
 
 " Moving lines up or down
 " ------------------------------------------------------------------------------

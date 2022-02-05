@@ -1,21 +1,61 @@
-\documentclass[12pt]{article}
+% ==============================================================================
+% DOCUMENT BASICS
+% ==============================================================================
+\documentclass[
+    titlepage,numbers=noenddot,headinclude,
+    footinclude=true,cleardoublepage=empty,
+    dottedtoc,
+    BCOR=5mm,paper=a4,fontsize=11pt,
+]{scrreprt}
 
-\title{%FILE%}
-\author{%USER%}
-\date{%DATE_dd_MM_YY%}
+% ==============================================================================
+% PACKAGES
+% ==============================================================================
+\usepackage[utf8]{inputenc}
+\usepackage[pdfspacing]{classicthesis}
+\usepackage{lastpage}
 
+% ==============================================================================
+% CUSTOM COMMANDS
+% ==============================================================================
+\newcommand{\docTitle}{%FILE%}
+\newcommand{\myName}{%USER%}
+
+% ==============================================================================
+% BASE INFORMATION
+% ==============================================================================
+\title{\docTitle}
+\author{\myName}
+
+% ==============================================================================
+% START DOCUMENT HERE
+% ==============================================================================
 \begin{document}
-\maketitle
-\thispagestyle{empty}
-\newpage
 
+% ------------------------------------------------------------------------------
+% Title page
+% ------------------------------------------------------------------------------
+\pagestyle{scrheadings}
+\maketitle
+\cleardoublepage
+
+% ------------------------------------------------------------------------------
+% Table of Contents
+% ------------------------------------------------------------------------------
 \tableofcontents
 \thispagestyle{empty}
-\setcounter{page}{1}
-\newpage
+\cleardoublepage
+\setcounter{page}{1} % reset page counter
 
-\section{Introduction}
+% ------------------------------------------------------------------------------
+% Chapters
+% ------------------------------------------------------------------------------
+\chapter{Chapter title 1}
+Lorem ipsum dor sit amet.%HERE%
 
-%HERE%
+\cleardoublepage
+
+\section{Lorem ipsum 1}
+Lorem ipsum dor sit amet.
 
 \end{document}
