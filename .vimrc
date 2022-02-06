@@ -530,7 +530,7 @@ nnoremap <silent> Q :bw<CR>
 " ------------------------------------------------------------------------------
 " autocmd BufWritePost *.tex call system('xelatex ' . expand('%:p') . ' -output-directory=' . expand('%:h') . ' &')
 autocmd BufWritePost *.tex AsyncRun xelatex %:p -output-directory=%:h
-autocmd FileType tex nmap <buffer> T :silent AsyncRun! open -a Skim %:r.pdf<CR>
+autocmd FileType tex,plaintex nmap <buffer> T :AsyncRun! open -a Skim %:r.pdf<CR>
 
 " Moving lines up or down
 " ------------------------------------------------------------------------------
