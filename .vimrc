@@ -141,6 +141,11 @@ augroup javascript
   autocmd BufRead,BufNewFile *.prisma setlocal filetype=graphql
 augroup END
 
+augroup latex
+  autocmd!
+  autocmd BufRead,BufNewFile *.tex setlocal filetype=tex
+augroup END
+
 augroup rc
   autocmd!
   autocmd BufRead,BufNewFile .babelrc,.stylelintrc,.prettierrc,.htmlhintrc setlocal filetype=json
@@ -156,14 +161,14 @@ augroup styles
   " Format options have impact when formatting code with the 'gq' binding.
   " Default: crqlo (see ':h fo-table' for more info)
   autocmd FileType * set formatoptions=crql
-  autocmd FileType text,markdown set formatoptions+=t
+  autocmd FileType text,markdown,tex,plaintex set formatoptions+=t
 
   autocmd BufRead,BufNewFile *.min.* setlocal syntax=off
   autocmd FileType java,python,go,apache setlocal tabstop=4 shiftwidth=4 softtabstop=4
   autocmd FileType php setlocal iskeyword-=-
   autocmd FileType css,less,scss setlocal iskeyword+=.
   autocmd FileType vim setlocal iskeyword+=: foldmethod=marker
-  autocmd FileType text,markdown setlocal spell conceallevel=0
+  autocmd FileType text,markdown,tex,plaintex setlocal spell conceallevel=0
   autocmd FileType json syntax match Comment +\/\/.\+$+
 augroup END
 
@@ -528,8 +533,7 @@ nnoremap <silent> Q :bw<CR>
 
 " LaTeX compilation
 " ------------------------------------------------------------------------------
-" autocmd BufWritePost *.tex call system('xelatex ' . expand('%:p') . ' -output-directory=' . expand('%:h') . ' &')
-autocmd BufWritePost *.tex AsyncRun xelatex %:p -output-directory=%:h
+autocmd FileType tex,plaintex nmap <buffer> R :AsyncRun xelatex %:p -output-directory=%:h<CR>
 autocmd FileType tex,plaintex nmap <buffer> T :AsyncRun! open -a Skim %:r.pdf<CR>
 
 " Moving lines up or down
