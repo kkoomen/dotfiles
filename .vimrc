@@ -528,8 +528,9 @@ nnoremap <silent> Q :bw<CR>
 
 " LaTeX compilation
 " ------------------------------------------------------------------------------
-autocmd BufWritePost *.tex call system('xelatex ' . expand('%:p') . ' &')
-autocmd FileType tex nmap <buffer> T :call system('open -a Skim ' . expand('%:r') . '.pdf &')<CR>
+" autocmd BufWritePost *.tex call system('xelatex ' . expand('%:p') . ' -output-directory=' . expand('%:h') . ' &')
+autocmd BufWritePost *.tex AsyncRun xelatex %:p -output-directory=%:h
+autocmd FileType tex nmap <buffer> T :silent AsyncRun! open -a Skim %:r.pdf<CR>
 
 " Moving lines up or down
 " ------------------------------------------------------------------------------
@@ -1013,6 +1014,18 @@ let g:UltiSnipsSnippetDirectories = ['UltiSnips']
 let g:caser_prefix = 'ac'
 
 " }}}
+" Plugins: AsyncRun {{{
+
+function! s:CloseAsyncRunQuickfixWindow()
+  if g:asyncrun_code == 0
+    cclose
+  endif
+endfunction
+
+let g:asyncrun_open = 6
+autocmd User AsyncRunStop call <SID>CloseAsyncRunQuickfixWindow()
+
+" }}}
 " Plugins {{{
 
 call plug#begin('~/.vim/plugged')
@@ -1039,6 +1052,7 @@ Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 Plug 'pechorin/any-jump.vim'
 Plug 'sheerun/vim-polyglot'
 Plug 'sickill/vim-pasta'
+Plug 'skywind3000/asyncrun.vim'
 Plug 'tomtom/tcomment_vim'
 Plug 'tpope/vim-endwise'
 Plug 'tpope/vim-surround'
