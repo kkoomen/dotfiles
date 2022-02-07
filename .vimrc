@@ -251,13 +251,46 @@ function! s:SpaceToTab(str) abort
   return repeat("\t", len(a:str) / shiftwidth()) . repeat(' ', l:remainder)
 endfunction
 
+function! s:GetGitRoot() abort
+  let l:git_root = system('git -C ' . shellescape(expand('%:p:h')) . ' rev-parse --show-toplevel')
+  if v:shell_error == 0
+    return split(l:git_root, '\n')[0]
+  else
+    return ''
+  endif
+endfunction
+
 function! s:GetRelativeBufferPathInGitDirectory() abort
   return substitute(
         \ expand('%:p'),
-        \ trim(system('git -C ' . shellescape(expand('%:p:h')) . ' rev-parse --show-toplevel')) . '/',
+        \ trim(<SID>GetGitRoot()) . '/',
         \ '',
         \ 'g'
         \ )
+endfunction
+
+function! s:CompileLatexProject() abort
+  let l:mainfile = 'main.tex'
+  let l:git_root = <SID>GetGitRoot()
+  if l:git_root != '' && filereadable(l:git_root . '/' . l:mainfile)
+    " Compile current project based on the git root directory.
+    execute('AsyncRun xelatex ' . l:git_root . '/' .  l:mainfile . ' -output-directory=' . l:git_root)
+  else
+    " Compile current file.
+    execute('AsyncRun xelatex %:p -output-directory=%:h')
+  endif
+endfunction
+
+function! s:OpenLatexPDF() abort
+  let l:mainfile = 'main.pdf'
+  let l:git_root = <SID>GetGitRoot()
+  if l:git_root != '' && filereadable(l:git_root . '/' . l:mainfile)
+    " Open current project's PDF based on the git root directory.
+    execute('AsyncRun! open -a Skim ' . l:git_root . '/' . l:mainfile)
+  else
+    " Open current file's PDF.
+    execute('AsyncRun! open -a Skim %:r.pdf')
+  endif
 endfunction
 
 " }}}
@@ -533,8 +566,8 @@ nnoremap <silent> Q :bw<CR>
 
 " LaTeX compilation
 " ------------------------------------------------------------------------------
-autocmd FileType tex,plaintex nmap <buffer> R :AsyncRun xelatex %:p -output-directory=%:h<CR>
-autocmd FileType tex,plaintex nmap <buffer> T :AsyncRun! open -a Skim %:r.pdf<CR>
+autocmd FileType tex,plaintex nmap <buffer> R :call <SID>CompileLatexProject()<CR>
+autocmd FileType tex,plaintex nmap <buffer> T :call <SID>OpenLatexPDF()<CR>
 
 " Moving lines up or down
 " ------------------------------------------------------------------------------
