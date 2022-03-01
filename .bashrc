@@ -89,6 +89,9 @@ export GOPATH="$HOME/tech/go"
 export GOROOT="$BREW_PREFIX/opt/go/libexec"
 export PATH="$GOPATH/bin:$GOROOT/bin:$PATH"
 
+# -- PATH: Rust
+export PATH="$PATH:$HOME/.cargo/bin"
+
 # -- PATH: Ruby
 # export PATH="/usr/local/opt/ruby/bin:$PATH"
 export PATH="/usr/local/opt/ruby@2.7/bin:$PATH"

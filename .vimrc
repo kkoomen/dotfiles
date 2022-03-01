@@ -164,7 +164,7 @@ augroup styles
   autocmd FileType text,markdown,tex,plaintex set formatoptions+=t
 
   autocmd BufRead,BufNewFile *.min.* setlocal syntax=off
-  autocmd FileType java,python,go,apache setlocal tabstop=4 shiftwidth=4 softtabstop=4
+  autocmd FileType java,python,go,apache,tex,plaintex setlocal tabstop=4 shiftwidth=4 softtabstop=4
   autocmd FileType php setlocal iskeyword-=-
   autocmd FileType css,less,scss setlocal iskeyword+=.
   autocmd FileType vim setlocal iskeyword+=: foldmethod=marker
@@ -261,6 +261,12 @@ function! s:GetGitRoot() abort
 endfunction
 
 function! s:GetRelativeBufferPathInGitDirectory() abort
+  let l:git_root = <SID>GetGitRoot()
+
+  if l:git_root == ''
+    return expand('%:p')
+  endif
+
   return substitute(
         \ expand('%:p'),
         \ trim(<SID>GetGitRoot()) . '/',
