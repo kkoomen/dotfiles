@@ -999,6 +999,15 @@ function LightlineFiletype() abort
   return &ft !=# '' ? &ft : 'no ft'
 endfunction
 
+function LightLineWordCount() abort
+  if has_key(wordcount(), 'visual_words')
+    let g:word_count = wordcount().visual_words . '/' . wordcount().words " count selected words
+  else
+    let g:word_count = wordcount().cursor_words . '/' . wordcount().words " or shows words 'so far'
+  endif
+  return 'words: ' . g:word_count
+endfunction
+
 let g:lightline = {
 \  'colorscheme': 'onedark',
 \  'active': {
@@ -1009,7 +1018,7 @@ let g:lightline = {
 \    'right': [
 \      ['lineinfo'],
 \      ['percent'],
-\      ['gutentags', 'indent', 'fileformat', 'fileencoding', 'filetype'],
+\      ['gutentags', 'wordcount', 'indent', 'fileformat', 'fileencoding', 'filetype'],
 \    ],
 \  },
 \  'inactive': {
@@ -1036,6 +1045,9 @@ let g:lightline = {
 \  'component_expand': {'buffers': 'lightline#bufferline#buffers'},
 \  'component_type': {'buffers': 'tabsel'},
 \}
+
+" Show word count only for filetypes that are used for documentation and writing.
+autocmd BufRead,BufNewFile *.tex,*.md,*.txt let g:lightline['component_function']['wordcount'] = 'LightLineWordCount'
 
 let g:lightline#bufferline#unnamed = '[No name]'
 let g:lightline#bufferline#filename_modifier = ':t'
@@ -1067,6 +1079,11 @@ endfunction
 
 let g:asyncrun_open = 6
 autocmd User AsyncRunStop call <SID>CloseAsyncRunQuickfixWindow()
+
+" }}}
+" Plugins: Goyo {{{
+
+let g:goyo_width = 81
 
 " }}}
 " Plugins {{{
