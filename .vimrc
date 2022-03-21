@@ -999,13 +999,17 @@ function LightlineFiletype() abort
   return &ft !=# '' ? &ft : 'no ft'
 endfunction
 
-function LightLineWordCount() abort
+function LightlineWordCount() abort
+  if index(['', 'text', 'markdown', 'tex', 'asciidoc', 'help', 'mail', 'org', 'rst'], &ft) < 0
+    return ''
+  endif
+
   if has_key(wordcount(), 'visual_words')
     let g:word_count = wordcount().visual_words . '/' . wordcount().words " count selected words
   else
     let g:word_count = wordcount().cursor_words . '/' . wordcount().words " or shows words 'so far'
   endif
-  return 'words: ' . g:word_count
+  return 'words:' . g:word_count
 endfunction
 
 let g:lightline = {
@@ -1034,6 +1038,7 @@ let g:lightline = {
 \    'filename': 'LightlineFilename',
 \    'modified': 'LightlineModified',
 \    'gutentags': 'LightlineGutentags',
+\    'wordcount': 'LightlineWordCount',
 \    'indent': 'LightlineIndent',
 \    'fileformat': 'LightlineFileFormat',
 \    'fileencoding': 'LightlineFileEncoding',
@@ -1045,9 +1050,6 @@ let g:lightline = {
 \  'component_expand': {'buffers': 'lightline#bufferline#buffers'},
 \  'component_type': {'buffers': 'tabsel'},
 \}
-
-" Show word count only for filetypes that are used for documentation and writing.
-autocmd BufRead,BufNewFile *.tex,*.md,*.txt let g:lightline['component_function']['wordcount'] = 'LightLineWordCount'
 
 let g:lightline#bufferline#unnamed = '[No name]'
 let g:lightline#bufferline#filename_modifier = ':t'
