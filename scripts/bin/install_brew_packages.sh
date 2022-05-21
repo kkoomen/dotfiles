@@ -52,6 +52,9 @@ cask_apps=(
 
   # Quicklook
   qlvideo
+
+  # Other
+  rectangle
 )
 
 for app in "${cask_apps[@]}"; do
