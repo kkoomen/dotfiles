@@ -14,7 +14,8 @@ function extract() {
       *.tgz)              tar xvzf   "$1"  ;;
       *.Z)                uncompress "$1"  ;;
       *.7z)               7z x       "$1"  ;;
-      *)           echo "don't know how to extract '$1'..." ;;
+      *.zip)              unzip      "$1"  ;;
+      *)                  echo "don't know how to extract '$1'..." ;;
     esac
   else
     echo "extract: error: $1 is not valid"
