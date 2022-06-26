@@ -30,8 +30,8 @@ brew analytics off
 export PATH="/usr/local/bin:$PATH"
 
 cask_apps=(
-  # Documents
-  libreoffice
+  # LaTeX
+  mactex
 
   # Media players
   vlc
@@ -48,7 +48,6 @@ cask_apps=(
 
   # Development
   postman
-  sequel-pro
 
   # Quicklook
   qlvideo
@@ -90,7 +89,6 @@ apps=(
   curlftpfs
   go
   typescript
-  git
 
   # Development: C
   ccls

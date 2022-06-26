@@ -7,6 +7,7 @@ esac
 # PATH
 export PATH="/usr/local/bin:$PATH"
 export PATH="/usr/local/sbin:$PATH"
+export PATH="/opt/homebrew/bin:$PATH"
 
 # Base variable exporting.
 export EDITOR=vim
@@ -70,11 +71,11 @@ shopt -s cdspell
 
 # Load NVM
 export NVM_DIR="$HOME/.nvm"
-[ -s /usr/local/opt/nvm/nvm.sh ] && . /usr/local/opt/nvm/nvm.sh
-[ -s /usr/local/opt/nvm/etc/bash_completion.d/nvm ] && . /usr/local/opt/nvm/etc/bash_completion.d/nvm
+[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && . "/opt/homebrew/opt/nvm/nvm.sh"  # This loads nvm
+[ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && . "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 
-# Load Rust
-. "$HOME/.cargo/env"
+# LaTeX
+export PATH="/usr/local/texlive/2022/bin/universal-darwin:$PATH"
 
 # Set PS1 format.
 PS1_NORMAL="$(tput setaf 7)┌─ \w\[$(tput setaf 3)\]\$(git-branch)\[$(tput setaf 7)\]\$(get-virtualenv)\n└──── ➜  "
@@ -82,7 +83,7 @@ PS1_ERROR="$(tput setaf 1)┌─ $(tput setaf 7)\w\[$(tput setaf 3)\]\$(git-bran
 export PS1="\$([[ \$? == 0 ]] && echo \"$PS1_NORMAL\" || echo \"$PS1_ERROR\")"
 
 # -- PATH: Java
- export PATH="$PATH:$(/usr/libexec/java_home)"
+#  export PATH="$PATH:$(/usr/libexec/java_home)"
 
 # -- PATH: GOLANG
 export GOPATH="$HOME/tech/go"
@@ -91,6 +92,7 @@ export PATH="$GOPATH/bin:$GOROOT/bin:$PATH"
 
 # -- PATH: Rust
 export PATH="$PATH:$HOME/.cargo/bin"
+. "$HOME/.cargo/env"
 
 # -- PATH: Ruby
 # export PATH="/usr/local/opt/ruby/bin:$PATH"

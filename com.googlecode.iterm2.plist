@@ -1304,7 +1304,7 @@ Reset</string>
 				<real>0.90237909555435181</real>
 			</dict>
 			<key>BM Growl</key>
-			<true/>
+			<false/>
 			<key>Background Color</key>
 			<dict>
 				<key>Alpha Component</key>
