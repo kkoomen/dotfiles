@@ -37,7 +37,6 @@
     "typeParameter": "typeParameter",
     "default": "default"
   },
-  "coc.preferences.colorSupport": false,
   "solargraph.diagnostics": true,
   "eslint.autoFixOnSave": true,
   "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": true,
