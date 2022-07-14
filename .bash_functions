@@ -1,5 +1,12 @@
 shopt -s expand_aliases
 
+function mergepdf {
+  output_file="$1"
+  shift
+  gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile="$output_file" "$@"
+}
+
+
 function editorconfig-init {
     if [[ -f .editorconfig ]]; then
         echo "[ERROR] .editorconfig config already exists in $(pwd)"

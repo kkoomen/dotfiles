@@ -13,7 +13,6 @@ alias rsync="rsync -azh --inplace --no-whole-file -P --stats --timeout=120"
 alias gr='rg --column --line-number --no-heading --fixed-strings --ignore-case --follow --hidden --glob "!.git/*" --color "always" --'
 alias getsubs='subliminal download -s -f -l en'
 alias mpv-16-9='mpv --video-aspect-override=16:9'
-alias brew='arch -x86_64 brew'
 
 # NETWORK
 alias xip="curl ifconfig.me"

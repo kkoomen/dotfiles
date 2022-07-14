@@ -1011,7 +1011,8 @@ function LightlineWordCount() abort
   else
     let g:word_count = wordcount().cursor_words . '/' . wordcount().words " or shows words 'so far'
   endif
-  return 'words:' . g:word_count
+
+  return 'words:' . g:word_count . ', chars:' . (wordcount().chars - 1)
 endfunction
 
 let g:lightline = {
