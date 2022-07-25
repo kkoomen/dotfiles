@@ -106,6 +106,7 @@ export PATH="/usr/local/texlive/2021/bin/universal-darwin:$PATH"
 
 # -- PATH: Python
 export PATH="$HOME/Library/Python/3.9/bin:$PATH"
+export PATH="$BREW_PREFIX/opt/python@3.9/Frameworks/Python.framework/Versions/3.9/bin:$PATH"
 
 # -- PATH: PHP
 export PATH="/usr/local/opt/php/bin:$PATH"

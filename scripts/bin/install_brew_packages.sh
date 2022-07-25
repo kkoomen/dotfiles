@@ -89,6 +89,7 @@ apps=(
   curlftpfs
   go
   typescript
+  gh
 
   # Development: C
   ccls
