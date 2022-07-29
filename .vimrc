@@ -703,8 +703,8 @@ endfunction
 " }}}
 " Plugins: indentLine {{{
 
-let g:indentLine_setConceal = 0
 let g:indentLine_char = '│'
+let g:indentLine_color_gui = '#4C546C'
 
 " }}}
 " Plugins: MRU {{{
