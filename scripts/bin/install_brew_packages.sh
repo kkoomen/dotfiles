@@ -16,6 +16,7 @@ if test ! $(which brew)
 then
   echo "Installing Homebrew."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+  eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
 brew update && brew upgrade
@@ -41,7 +42,6 @@ cask_apps=(
 
   # Requirements for curlftpfs
   xquartz
-  osxfuse
 
   # Compiling
   cmake
@@ -51,9 +51,6 @@ cask_apps=(
 
   # Quicklook
   qlvideo
-
-  # Other
-  rectangle
 )
 
 for app in "${cask_apps[@]}"; do
@@ -102,7 +99,7 @@ apps=(
   tree
   htop
   acrogenesis/macchanger/macchanger
-  --HEAD universal-ctags/universal-ctags/universal-ctags
+  --HEAD\ universal-ctags/universal-ctags/universal-ctags
 
   # Omnitagger
   chromaprint
