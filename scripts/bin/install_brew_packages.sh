@@ -64,6 +64,7 @@ apps=(
 
   # Encryption
   gpg
+  pinentry-mac
 
   # Shell
   bash-completion
