@@ -45,6 +45,9 @@ set showtabline=2
 set nofsync
 set diffopt+=vertical
 set shell=/bin/bash
+set nobackup
+set nowritebackup
+set noswapfile
 
 " Make our custom aliases available within a non-interactive vim.
 " -----------------------------------------------------------------------------
@@ -102,14 +105,6 @@ set undodir=~/.vim/undo,/tmp " Where to save undo histories.
 set undolevels=1000          " How many undos.
 set undoreload=10000         " Number of lines to save for undo.
 set history=1000             " Sets how many lines of history vim has to remember.
-
-" }}}
-" Swap files {{{
-
-set directory=~/.vim/swap,~/tmp,.
-set backupdir=~/.vim/backup,~/tmp,.
-set noswapfile
-set nobackup
 
 " }}}
 " Filetypes {{{
@@ -177,6 +172,11 @@ augroup END
 " Functions {{{
 
 " Helpers {{{2
+
+function s:ShowCursorHighlightGroups() abort
+  let l:s = synID(line('.'), col('.'), 1)
+  echo synIDattr(l:s, 'name') . ' -> ' . synIDattr(synIDtrans(l:s), 'name')
+endfunction
 
 function s:GetVisualModeContent() abort
   let [line_start, column_start] = getpos("'<")[1:2]
@@ -495,6 +495,9 @@ command! -nargs=1 -complete=file Open call <SID>Open('<bang>', '<args>')
 
 " Remove a file.
 command! -nargs=1 -complete=file Remove call <SID>Remove('<args>')
+
+" Display highlight groups under the cursor.
+command! -nargs=0 ShowHighlightGroups call <SID>ShowCursorHighlightGroups()
 
 " Set the absolute path of the current buffer to the system clipboard.
 " 'BP' refers to 'Buffer Path'.
@@ -867,7 +870,7 @@ let g:fzf_tags_command = 'ctags --extra=+f -R'
 
 " Hide statusline
 autocmd! FileType fzf set laststatus=0 noshowmode noruler
-  \| autocmd BufLeave <buffer> set laststatus=2 showmode ruler
+      \| autocmd BufLeave <buffer> set laststatus=2 showmode ruler
 
 
 " Use ripgrep with FZF
@@ -951,11 +954,10 @@ command! -nargs=0 EslintFix :call CocAction('runCommand', 'eslint.executeAutofix
 nmap <silent> gd <Plug>(coc-definition)
 nmap <silent> gi <Plug>(coc-implementation)
 nmap <silent> gr <Plug>(coc-references)
+nmap <silent> gru <Plug>(coc-references-used)
 
-" Make <CR> to accept selected completion item or notify coc.nvim to format
-" <C-g>u breaks current undo, please make your own choice.
-inoremap <silent><expr> <CR> coc#pum#visible() ? coc#pum#confirm()
-                              \: "\<C-g>u\<CR>\<c-r>=coc#on_enter()\<CR>"
+" Use <CR> to confirm completion
+inoremap <expr> <cr> coc#pum#visible() ? coc#_select_confirm() : "\<CR>"
 
 hi! CocErrorSign guifg=#d97084
 hi! CocWarningSign guifg=#e9cb87
@@ -1023,43 +1025,43 @@ function LightlineWordCount() abort
 endfunction
 
 let g:lightline = {
-\  'colorscheme': 'onedark',
-\  'active': {
-\    'left': [
-\      ['mode', 'paste'],
-\      ['gitbranch', 'readonly', 'filename', 'modified'],
-\    ],
-\    'right': [
-\      ['lineinfo'],
-\      ['percent'],
-\      ['gutentags', 'wordcount', 'indent', 'fileformat', 'fileencoding', 'filetype'],
-\    ],
-\  },
-\  'inactive': {
-\    'left': [['filename']],
-\    'right': []
-\  },
-\  'component': {
-\    'lineinfo': ' %3l/%L:%-2v',
-\  },
-\  'component_function': {
-\    'gitbranch': 'LightlineGitBranch',
-\    'readonly': 'LightlineReadonly',
-\    'filename': 'LightlineFilename',
-\    'modified': 'LightlineModified',
-\    'gutentags': 'LightlineGutentags',
-\    'wordcount': 'LightlineWordCount',
-\    'indent': 'LightlineIndent',
-\    'fileformat': 'LightlineFileFormat',
-\    'fileencoding': 'LightlineFileEncoding',
-\    'filetype': 'LightlineFiletype',
-\  },
-\  'separator': {'left': '', 'right': ''},
-\  'subseparator': {'left': '', 'right': ''},
-\  'tabline': {'left': [['buffers']], 'right': [['close']]},
-\  'component_expand': {'buffers': 'lightline#bufferline#buffers'},
-\  'component_type': {'buffers': 'tabsel'},
-\}
+      \  'colorscheme': 'onedark',
+      \  'active': {
+      \    'left': [
+      \      ['mode', 'paste'],
+      \      ['gitbranch', 'readonly', 'filename', 'modified'],
+      \    ],
+      \    'right': [
+      \      ['lineinfo'],
+      \      ['percent'],
+      \      ['gutentags', 'wordcount', 'indent', 'fileformat', 'fileencoding', 'filetype'],
+      \    ],
+      \  },
+      \  'inactive': {
+      \    'left': [['filename']],
+      \    'right': []
+      \  },
+      \  'component': {
+      \    'lineinfo': ' %3l/%L:%-2v',
+      \  },
+      \  'component_function': {
+      \    'gitbranch': 'LightlineGitBranch',
+      \    'readonly': 'LightlineReadonly',
+      \    'filename': 'LightlineFilename',
+      \    'modified': 'LightlineModified',
+      \    'gutentags': 'LightlineGutentags',
+      \    'wordcount': 'LightlineWordCount',
+      \    'indent': 'LightlineIndent',
+      \    'fileformat': 'LightlineFileFormat',
+      \    'fileencoding': 'LightlineFileEncoding',
+      \    'filetype': 'LightlineFiletype',
+      \  },
+      \  'separator': {'left': '', 'right': ''},
+      \  'subseparator': {'left': '', 'right': ''},
+      \  'tabline': {'left': [['buffers']], 'right': [['close']]},
+      \  'component_expand': {'buffers': 'lightline#bufferline#buffers'},
+      \  'component_type': {'buffers': 'tabsel'},
+      \}
 
 let g:lightline#bufferline#unnamed = '[No name]'
 let g:lightline#bufferline#filename_modifier = ':t'

@@ -12,8 +12,6 @@ export PATH="/opt/homebrew/bin:$PATH"
 # Base variable exporting.
 export EDITOR=vim
 export NODE_ENV=development
-export BROWSER=firefox
-export BREW_PREFIX=$(brew --prefix)
 export TERM=xterm-256color
 
 # virtualenv
@@ -71,19 +69,13 @@ shopt -s cdspell
 
 # Load NVM
 export NVM_DIR="$HOME/.nvm"
-[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && . "/opt/homebrew/opt/nvm/nvm.sh"  # This loads nvm
-[ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && . "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
-
-# LaTeX
-export PATH="/usr/local/texlive/2022/bin/universal-darwin:$PATH"
+[ -s "$BREW_PREFIX/opt/nvm/nvm.sh" ] && . "$BREW_PREFIX/opt/nvm/nvm.sh"  # This loads nvm
+[ -s "$BREW_PREFIX/opt/nvm/etc/bash_completion.d/nvm" ] && . "$BREW_PREFIX/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 
 # Set PS1 format.
 PS1_NORMAL="$(tput setaf 7)┌─ \w\[$(tput setaf 3)\]\$(git-branch)\[$(tput setaf 7)\]\$(get-virtualenv)\n└──── ➜  "
 PS1_ERROR="$(tput setaf 1)┌─ $(tput setaf 7)\w\[$(tput setaf 3)\]\$(git-branch)\[$(tput setaf 7)\]\$(get-virtualenv)\n\[$(tput setaf 1)\]└──── ➜  \[$(tput setaf 7)\]"
 export PS1="\$([[ \$? == 0 ]] && echo \"$PS1_NORMAL\" || echo \"$PS1_ERROR\")"
-
-# -- PATH: Java
-#  export PATH="$PATH:$(/usr/libexec/java_home)"
 
 # -- PATH: GOLANG
 export GOPATH="$HOME/tech/go"
@@ -95,18 +87,22 @@ export PATH="$PATH:$HOME/.cargo/bin"
 . "$HOME/.cargo/env"
 
 # -- PATH: Ruby
-# export PATH="/usr/local/opt/ruby/bin:$PATH"
-export PATH="/usr/local/opt/ruby@2.7/bin:$PATH"
-export LDFLAGS="-L/usr/local/opt/ruby@2.7/lib"
-export CPPFLAGS="-I/usr/local/opt/ruby@2.7/include"
-export PKG_CONFIG_PATH="/usr/local/opt/ruby@2.7/lib/pkgconfig"
+export PATH="$BREW_PREFIX/opt/ruby/bin:$PATH"
+export LDFLAGS="-L$BREW_PREFIX/opt/ruby/lib"
+export CPPFLAGS="-I$BREW_PREFIX/opt/ruby/include"
+export PKG_CONFIG_PATH="$BREW_PREFIX/opt/ruby/lib/pkgconfig"
+
+# surpress warnings
+# see: https://stackoverflow.com/a/59594760
+export RUBYOPT='-W0'
+if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
 
 # -- PATH: MacTex
-export PATH="/usr/local/texlive/2021/bin/universal-darwin:$PATH"
+export PATH="$(echo /usr/local/texlive/*/bin/universal-darwin):$PATH"
 
 # -- PATH: Python
-export PATH="$HOME/Library/Python/3.9/bin:$PATH"
-export PATH="$BREW_PREFIX/opt/python@3.9/Frameworks/Python.framework/Versions/3.9/bin:$PATH"
+export PATH="$(echo $HOME/Library/Python/*/bin):$PATH"
+export PATH="$BREW_PREFIX/opt/python@3/Frameworks/Python.framework/Versions/Current/bin:$PATH"
 
 # -- PATH: PHP
 export PATH="/usr/local/opt/php/bin:$PATH"
@@ -116,17 +112,11 @@ export PATH="/usr/local/opt/php/sbin:$PATH"
 # Headers can be found with: g++ -E -x c++ - -v < /dev/null
 # and then look for the section: `#include <...> search starts here:`
 export PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include:$PATH"
-export PATH="/usr/local/Cellar/llvm/12.0.0_1/bin:$PATH"
+export PATH="$(echo $BREW_PREFIX/Cellar/llvm/*/bin):$PATH"
 export LD_LIBRARY_PATH="/Library/Developer/CommandLineTools/usr/lib:$LD_LIBRARY_PATH"
 
 # Swift
 export TOOLCHAINS=swift
-
-# RUBY
-# surpress warnings
-# see: https://stackoverflow.com/a/59594760
-export RUBYOPT='-W0'
-if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
 
 # Damn Apple who made zsh the default shell on OS X ¯\_(///▽///)_/¯
 export BASH_SILENCE_DEPRECATION_WARNING=1
