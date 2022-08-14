@@ -101,6 +101,7 @@ apps=(
   htop
   acrogenesis/macchanger/macchanger
   --HEAD\ universal-ctags/universal-ctags/universal-ctags
+  ffmpeg
 
   # Omnitagger
   chromaprint
