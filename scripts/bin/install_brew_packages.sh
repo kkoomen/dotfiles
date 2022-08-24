@@ -88,6 +88,7 @@ apps=(
   go
   typescript
   gh
+  swi-prolog
 
   # Development: C
   ccls
