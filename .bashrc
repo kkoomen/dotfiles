@@ -9,6 +9,8 @@ export PATH="/usr/local/bin:$PATH"
 export PATH="/usr/local/sbin:$PATH"
 export PATH="/opt/homebrew/bin:$PATH"
 
+export BREW_PREFIX="$(brew --prefix)"
+
 # Base variable exporting.
 export EDITOR=vim
 export NODE_ENV=development
