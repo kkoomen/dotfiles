@@ -956,7 +956,6 @@ nmap <silent> gi <Plug>(coc-implementation)
 nmap <silent> gr <Plug>(coc-references)
 nmap <silent> gru <Plug>(coc-references-used)
 nmap <leader>n <Plug>(coc-rename)
-inoremap <silent><expr> <Leader>a coc#refresh()
 
 " Use <CR> to confirm completion
 inoremap <expr> <cr> coc#pum#visible() ? coc#_select_confirm() : "\<CR>"

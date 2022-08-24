@@ -1,6 +1,4 @@
-#!/usr/bin/env swipl -f -q
-
-:- initialization main.
+#!/usr/bin/env swipl -q -t main
 
 main :-
   write('Hello World\n').
