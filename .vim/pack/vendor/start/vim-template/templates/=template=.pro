@@ -1,26 +1,6 @@
-PRO %FILE%
-;+
-; Name:
-;       %FILE%
-; Purpose:
-;
-; Calling sequence:
-;       %FILE%
-; Input:
-;
-; Output:
-;
-; Keywords:
-;
-; History:
-;
-; Author:
-;       Copyright © %YEAR% %USER% <%MAIL%>
-;       Distributed under terms of the %LICENSE% license.
-;-
+#!/usr/bin/env swipl -f -q
 
-COMPILE_OPT IDL2                ;Set compile options
+:- initialization main.
 
-%HERE%
-
-END
+main :-
+  write('Hello World\n').
