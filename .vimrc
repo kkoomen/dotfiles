@@ -402,6 +402,11 @@ function s:RunPrologQuery() abort
     " start executing the command after '% ?- '
     let l:cmd = substitute(l:line, '% ?- ', '', 'g')
     let l:output = system('swipl -g "consult(''' . expand('%') . '''), ' . l:cmd . ', halt"')
+    if v:shell_error == 0
+      echo '[prolog] query succeeded: ' . l:cmd
+    else
+      echo '[prolog] query failed: ' . l:cmd
+    endif
     let l:result = map(split(l:output, '\n'), '"% " . v:val')
     call append(line('.'), l:result)
   endif
