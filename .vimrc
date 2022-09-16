@@ -396,22 +396,6 @@ function s:PHPConvertArrays() abort
   call winrestview(l:winview)
 endfunction
 
-function s:RunPrologQuery() abort
-  let l:line = getline(line('.'))
-  if l:line =~# '% ?- '
-    " start executing the command after '% ?- '
-    let l:cmd = substitute(l:line, '% ?- ', '', 'g')
-    let l:output = system('swipl -g "consult(''' . expand('%') . '''), ' . l:cmd . ', halt"')
-    if v:shell_error == 0
-      echo '[prolog] query succeeded: ' . l:cmd
-    else
-      echo '[prolog] query failed: ' . l:cmd
-    endif
-    let l:result = map(split(l:output, '\n'), '"% " . v:val')
-    call append(line('.'), l:result)
-  endif
-endfunction
-
 " }}}
 
 " Hooks {{{2
@@ -567,9 +551,6 @@ command! -nargs=0 JSArrowToFunc :%s/\(\%(const\|let\|var\) \(\w\+\)\s*=\s*\)\?(\
 " Run autoflake on the current python file
 command! -nargs=0 PythonAutoflake :call system('autoflake --in-place --remove-unused-variables --remove-all-unused-imports ' . expand('%')) | :checktime
 
-" Run current line command in prolgo
-command! -nargs=0 RunPrologQuery call <SID>RunPrologQuery()
-
 " }}}
 
 " }}}
@@ -598,10 +579,6 @@ nnoremap <silent> Q :bw<CR>
 " ------------------------------------------------------------------------------
 autocmd FileType tex,plaintex nmap <buffer> R :call <SID>CompileLatexProject()<CR>
 autocmd FileType tex,plaintex nmap <buffer> T :call <SID>OpenLatexPDF()<CR>
-
-" Prolog run current line query
-" ------------------------------------------------------------------------------
-autocmd FileType prolog nmap <buffer> R :call <SID>RunPrologQuery()<CR>
 
 " Moving lines up or down
 " ------------------------------------------------------------------------------
