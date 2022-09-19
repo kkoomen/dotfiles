@@ -109,6 +109,8 @@ set history=1000             " Sets how many lines of history vim has to remembe
 " }}}
 " Filetypes {{{
 
+autocmd BufRead,BufNewFile *.pl setlocal filetype=prolog
+
 augroup drupal
   autocmd!
   autocmd BufRead,BufNewFile *.blade.php setlocal filetype=php
