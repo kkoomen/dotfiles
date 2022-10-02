@@ -1194,3 +1194,25 @@ highlight link javaType Type
 highlight link javaDocTags PreProc
 
 " }}}
+" SWI-Prolog {{{
+
+function! s:SwiplQuery() abort
+  let l:curr_line = getline(line('.')) . "\n"
+
+  " Matches '%?-' and '% ?-'
+  let l:query_pattern = '^\s*%\s\??-\s*'
+  if l:curr_line =~# l:query_pattern
+    let l:query = substitute(l:curr_line, l:query_pattern, '', 'g')
+
+    set splitbelow
+    let l:term = term_start(['swipl', '-O', '-q', '-f', expand('%:p')], {
+          \ 'term_name': 'swipl',
+          \ 'term_rows': 10,
+          \ 'term_finish': 'close',
+          \ })
+    call term_sendkeys(l:term, l:query)
+  endif
+endfunction
+autocmd BufRead,BufNewFile *.pl nmap <buffer> R :call <SID>SwiplQuery()<CR>
+
+" }}}

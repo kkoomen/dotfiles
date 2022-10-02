@@ -1,5 +1,6 @@
 shopt -s expand_aliases
 
+# merge multiple PDF into a single PDF
 function mergepdf {
   output_file="$1"
   shift
