@@ -1061,7 +1061,7 @@ Reset</string>
 	<key>HideMenuBarInFullscreen</key>
 	<true/>
 	<key>HideScrollbar</key>
-	<true/>
+	<false/>
 	<key>HideTab</key>
 	<false/>
 	<key>HotkeyMigratedFromSingleToMulti</key>
@@ -1745,7 +1745,7 @@ Reset</string>
 			<key>Non-ASCII Ligatures</key>
 			<true/>
 			<key>Normal Font</key>
-			<string>JetBrainsMono-Bold 14</string>
+			<string>Iosevka-Semibold 16</string>
 			<key>Only The Default BG Color Uses Transparency</key>
 			<false/>
 			<key>Open Toolbelt</key>
@@ -2011,7 +2011,7 @@ Reset</string>
 			<key>Use Underline Color</key>
 			<false/>
 			<key>Vertical Spacing</key>
-			<real>1.7</real>
+			<real>1.6000000000000001</real>
 			<key>Visual Bell</key>
 			<false/>
 			<key>Window Type</key>

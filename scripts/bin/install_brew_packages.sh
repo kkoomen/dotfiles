@@ -27,6 +27,9 @@ brew doctor
 # turn off analytics
 brew analytics off
 
+# tap some additional repos
+brew tap homebrew/cask-fonts
+
 # Add brew to the commands
 export PATH="/usr/local/bin:$PATH"
 
@@ -51,6 +54,9 @@ cask_apps=(
 
   # Quicklook
   qlvideo
+
+  # Fonts
+  font-iosevka
 )
 
 for app in "${cask_apps[@]}"; do
