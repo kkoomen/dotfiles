@@ -710,6 +710,7 @@ endfunction
 
 let g:indentLine_char = '│'
 let g:indentLine_color_gui = '#4C546C'
+let g:indentLine_fileTypeExclude = ['tex']
 
 " }}}
 " Plugins: MRU {{{
