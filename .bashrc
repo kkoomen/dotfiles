@@ -121,6 +121,7 @@ export LD_LIBRARY_PATH="/Library/Developer/CommandLineTools/usr/lib:$LD_LIBRARY_
 export TOOLCHAINS=swift
 
 # Damn Apple who made zsh the default shell on OS X ¯\_(///▽///)_/¯
+# see: https://support.apple.com/en-us/HT208050
 export BASH_SILENCE_DEPRECATION_WARNING=1
 
 # LANG
