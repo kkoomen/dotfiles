@@ -24,6 +24,7 @@ FILES=(
   .gitconfig
   .completions
   Library/KeyBindings/DefaultKeyBinding.dict
+  .config/mpv/mpv.conf
 
   # Directories to symlink.
   .vim/
@@ -34,6 +35,7 @@ TOUCH_FILES=()
 
 # Directories that must exist.
 TOUCH_DIRS=(
+  .config/mpv/
   .ssh/
   .weechat/
   Library/KeyBindings/

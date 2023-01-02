@@ -7,7 +7,6 @@ function mergepdf {
   gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile="$output_file" "$@"
 }
 
-
 function editorconfig-init {
     if [[ -f .editorconfig ]]; then
         echo "[ERROR] .editorconfig config already exists in $(pwd)"
