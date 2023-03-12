@@ -3,7 +3,7 @@
 pip_packages=(
   subliminal
   omnitagger
-  youtube-dl
+  yt-dlp
   vim-vint
   autoflake
   autopep8

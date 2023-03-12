@@ -608,15 +608,6 @@ nnoremap <silent> <nowait> <Space> :silent! noh<CR>
 nnoremap <buffer> <nowait> <silent> <Leader>f :call <SID>Find('n')<CR>
 vnoremap <buffer> <nowait> <silent> <Leader>f :call <SID>Find('v')<CR>
 
-" Substitue words easily
-" ------------------------------------------------------------------------------
-nnoremap <buffer> <nowait> <silent> <Leader>s :call <SID>PrepareSubstitute('n')<CR>
-vnoremap <buffer> <nowait> <silent> <Leader>s :call <SID>PrepareSubstitute('v')<CR>
-
-" Re-indent code.
-" ------------------------------------------------------------------------------
-noremap <Leader>i :call <SID>IndentCode()<CR>
-
 " Allow saving of files as sudo when I forgot to start vim using sudo
 " ------------------------------------------------------------------------------
 cnoremap w!! w !sudo tee > /dev/null %
@@ -939,16 +930,21 @@ let g:coc_global_extensions = [
 function! s:show_documentation()
   if (index(['vim','help'], &filetype) >= 0)
     execute 'H ' . expand('<cword>')
+  elseif CocAction('hasProvider', 'hover')
+      call CocActionAsync('doHover')
   else
-    call CocActionAsync('doHover')
+    call feedkeys('K', 'in')
   endif
 endfunction
 
-" Use K to show documentation in preview window
+" Use K to show documentation in preview window.
 nnoremap <silent> K :call <SID>show_documentation()<CR>
 
-" Use to format current buffer
+" Use to format current buffer.
 command! -nargs=0 Format :call CocAction('format')
+
+" Re-indent code.
+noremap <Leader>i :call CocAction('format')<CR>
 
 " Use to organize imports of the current buffer.
 command! -nargs=0 OrganizeImports :call CocAction('runCommand', 'editor.action.organizeImport')
@@ -961,7 +957,11 @@ nmap <silent> gru <Plug>(coc-references-used)
 nmap <leader>n <Plug>(coc-rename)
 
 " Use <CR> to confirm completion
-inoremap <expr> <cr> coc#pum#visible() ? coc#_select_confirm() : "\<CR>"
+" inoremap <expr> <cr> coc#pum#visible() ? coc#_select_confirm() : "\<CR>"
+" Make <CR> to accept selected completion item or notify coc.nvim to format
+" <C-g>u breaks current undo, please make your own choice
+inoremap <silent><expr> <CR> coc#pum#visible() ? coc#pum#confirm()
+                              \: "\<C-g>u\<CR>\<c-r>=coc#on_enter()\<CR>"
 
 hi! CocErrorSign guifg=#d97084
 hi! CocWarningSign guifg=#e9cb87

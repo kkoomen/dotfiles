@@ -40,15 +40,11 @@
   "solargraph.diagnostics": true,
   "eslint.autoFixOnSave": true,
   "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": true,
+  "inlayHint.enable": false,
   "languageserver": {
     "lua": {
       "command": "lua-lsp",
       "filetypes": ["lua"]
-    },
-    "clangd": {
-      "command": "clangd",
-      "rootPatterns": ["compile_flags.txt", "compile_commands.json"],
-      "filetypes": ["c", "cc", "cpp", "c++", "objc", "objcpp"]
     }
   }
 }
