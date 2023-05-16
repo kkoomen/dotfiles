@@ -282,10 +282,10 @@ function! s:CompileLatexProject() abort
   let l:git_root = <SID>GetGitRoot()
   if l:git_root != '' && filereadable(l:git_root . '/' . l:mainfile)
     " Compile current project based on the git root directory.
-    execute('AsyncRun xelatex ' . l:git_root . '/' .  l:mainfile . ' -output-directory=' . l:git_root)
+    execute('AsyncRun xelatex -shell-escape ' . l:git_root . '/' .  l:mainfile . ' -output-directory=' . l:git_root)
   else
     " Compile current file.
-    execute('AsyncRun xelatex %:p -output-directory=%:h')
+    execute('AsyncRun xelatex -shell-escape %:p -output-directory=%:h')
   endif
 endfunction
 

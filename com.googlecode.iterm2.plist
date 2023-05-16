@@ -1361,7 +1361,7 @@ Reset</string>
 			<key>Character Encoding</key>
 			<integer>4</integer>
 			<key>Close Sessions On End</key>
-			<true/>
+			<integer>1</integer>
 			<key>Columns</key>
 			<integer>160</integer>
 			<key>Command</key>
@@ -1410,9 +1410,9 @@ Reset</string>
 			<key>Cursor Type</key>
 			<integer>2</integer>
 			<key>Custom Command</key>
-			<string>Yes</string>
+			<string>No</string>
 			<key>Custom Directory</key>
-			<string>Recycle</string>
+			<string>Advanced</string>
 			<key>Default Bookmark</key>
 			<string>No</string>
 			<key>Description</key>
@@ -1753,7 +1753,7 @@ Reset</string>
 			<key>Option Key Sends</key>
 			<integer>0</integer>
 			<key>Prompt Before Closing 2</key>
-			<false/>
+			<integer>0</integer>
 			<key>Right Option Key Sends</key>
 			<integer>0</integer>
 			<key>Rows</key>
@@ -1798,6 +1798,8 @@ Reset</string>
 			<false/>
 			<key>Smart Cursor Color</key>
 			<true/>
+			<key>Space</key>
+			<integer>0</integer>
 			<key>Status Bar Layout</key>
 			<dict>
 				<key>advanced configuration</key>
@@ -2011,7 +2013,7 @@ Reset</string>
 			<key>Use Underline Color</key>
 			<false/>
 			<key>Vertical Spacing</key>
-			<real>1.6000000000000001</real>
+			<real>1</real>
 			<key>Visual Bell</key>
 			<false/>
 			<key>Window Type</key>
