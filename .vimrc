@@ -704,12 +704,6 @@ let g:indentLine_color_gui = '#4C546C'
 let g:indentLine_fileTypeExclude = ['tex']
 
 " }}}
-" Plugins: MRU {{{
-
-let MRU_Window_Height = 10
-noremap <Leader>r :MRU<CR>
-
-" }}}
 " Plugins: tComment {{{
 
 map <C-c> g>c<CR>
@@ -963,11 +957,6 @@ nmap <leader>n <Plug>(coc-rename)
 inoremap <silent><expr> <CR> coc#pum#visible() ? coc#pum#confirm()
                               \: "\<C-g>u\<CR>\<c-r>=coc#on_enter()\<CR>"
 
-hi! CocErrorSign guifg=#d97084
-hi! CocWarningSign guifg=#e9cb87
-hi! CocInfoSign guifg=#d0d2d2
-hi! CocHintSign guifg=#6face4
-
 " }}}
 " Plugins: Lightline {{{
 
@@ -1029,7 +1018,7 @@ function LightlineWordCount() abort
 endfunction
 
 let g:lightline = {
-      \  'colorscheme': 'onedark',
+      \  'colorscheme': 'gruvbox_material',
       \  'active': {
       \    'left': [
       \      ['mode', 'paste'],
@@ -1099,11 +1088,6 @@ let g:asyncrun_open = 6
 autocmd User AsyncRunStop call <SID>CloseAsyncRunQuickfixWindow()
 
 " }}}
-" Plugins: Goyo {{{
-
-let g:goyo_width = 81
-
-" }}}
 " Plugins {{{
 
 call plug#begin('~/.vim/plugged')
@@ -1120,11 +1104,9 @@ Plug 'itchyny/vim-gitbranch'
 Plug 'jiangmiao/auto-pairs'
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
-Plug 'junegunn/goyo.vim'
 Plug 'junegunn/vader.vim'
 Plug 'ludovicchabant/vim-gutentags'
 Plug 'mattn/emmet-vim'
-Plug 'mengelbrecht/lightline-bufferline'
 Plug 'mileszs/ack.vim'
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 Plug 'pechorin/any-jump.vim'
@@ -1134,8 +1116,8 @@ Plug 'skywind3000/asyncrun.vim'
 Plug 'tomtom/tcomment_vim'
 Plug 'tpope/vim-endwise'
 Plug 'tpope/vim-surround'
-Plug 'yegappan/mru'
-Plug 'git@github.com:kkoomen/onedark.vim'
+Plug 'sainnhe/gruvbox-material'
+Plug 'ap/vim-buftabline'
 Plug 'git@github.com:kkoomen/vim-doge', { 'do': 'npm i --no-save && npm run build:binary:unix' }
 Plug 'git@github.com:kkoomen/vim-readdir'
 call plug#end()
@@ -1143,56 +1125,32 @@ call plug#end()
 " }}}
 " Color scheme {{{
 
-let g:onedark_color_overrides = {
-      \ 'dark_red'       : { 'gui': '#D97084', 'cterm': 'NONE' },
-      \ 'red'            : { 'gui': '#ED8499', 'cterm': 'NONE' },
-      \ 'dark_green'     : { 'gui': '#87BB7C', 'cterm': 'NONE' },
-      \ 'green'          : { 'gui': '#97D589', 'cterm': 'NONE' },
-      \ 'dark_yellow'    : { 'gui': '#D5B874', 'cterm': 'NONE' },
-      \ 'yellow'         : { 'gui': '#E9CB87', 'cterm': 'NONE' },
-      \ 'dark_blue'      : { 'gui': '#6FACE4', 'cterm': 'NONE' },
-      \ 'blue'           : { 'gui': '#87BFF5', 'cterm': 'NONE' },
-      \ 'dark_purple'    : { 'gui': '#A389DD', 'cterm': 'NONE' },
-      \ 'purple'         : { 'gui': '#B9A0EE', 'cterm': 'NONE' },
-      \ 'dark_cyan'      : { 'gui': '#68C5CD', 'cterm': 'NONE' },
-      \ 'cyan'           : { 'gui': '#68C5CD', 'cterm': 'NONE' },
-      \ 'dark_white'     : { 'gui': '#BBBEBF', 'cterm': 'NONE' },
-      \ 'white'          : { 'gui': '#A9B1D6', 'cterm': 'NONE' },
-      \ 'black'          : { 'gui': '#2E3440', 'cterm': 'NONE' },
-      \ 'comment_grey'   : { 'gui': '#5C647C', 'cterm': 'NONE' },
-      \ 'gutter_fg_grey' : { 'gui': '#4C546C', 'cterm': 'NONE' },
-      \ 'cursor_grey'    : { 'gui': '#2A303C', 'cterm': 'NONE' },
-      \ 'visual_black'   : { 'gui': '#A9B1D6', 'cterm': 'NONE' },
-      \ 'visual_grey'    : { 'gui': '#444b59', 'cterm': 'NONE' },
-      \ 'menu_grey'      : { 'gui': '#3B414D', 'cterm': 'NONE' },
-      \ 'special_grey'   : { 'gui': '#A9B1D6', 'cterm': 'NONE' },
-      \ 'vertsplit'      : { 'gui': '#A9B1D6', 'cterm': 'NONE' },
-      \}
+let g:gruvbox_bold = 0
+let g:gruvbox_italic = 0
+let g:gruvbox_material_background = 'soft'
+let g:gruvbox_material_better_performance = 1
 
 set background=dark
 set termguicolors
-colorscheme onedark
+colorscheme gruvbox-material
 
 " }}}
 " Custom Highlighting {{{
 
 " Only highlight the color column when the line is expanding the 80th column.
-highlight! ColorColumn ctermbg=red ctermfg=white guibg=#BE5046 guifg=#151515
+highlight! ColorColumn ctermbg=red ctermfg=white guibg=#ea6962 guifg=#252423
 call matchadd('ColorColumn', '\%81v.', 100)
 
-highlight! MatchParen guibg=#A9B1D6 guifg=#2E3440
-highlight! CocErrorSign guifg=#d97084
-highlight! CocWarningSign guifg=#d5b874
-highlight! CocInfoSign guifg=#bbbebf
-highlight! CocHintSign guifg=#6face4
-highlight! CocUnusedHighlight guifg=#5C647C
+" coc
+highlight! CocErrorSign guifg=#ea6962
+highlight! CocWarningSign guifg=#d8a657
+highlight! CocInfoSign guifg=#d4be98
+highlight! CocHintSign guifg=#7daea3
+" highlight! CocUnusedHighlight guifg=
 
 " Additional java highlighting
 let g:java_highlight_all = 1
 let g:java_highlight_functions = 1
-highlight link javaScopeDecl Statement
-highlight link javaType Type
-highlight link javaDocTags PreProc
 
 " }}}
 " SWI-Prolog {{{
