@@ -1083,6 +1083,7 @@ Plug 'godlygeek/tabular'
 Plug 'honza/vim-snippets'
 Plug 'itchyny/lightline.vim'
 Plug 'itchyny/vim-gitbranch'
+Plug 'mengelbrecht/lightline-bufferline'
 Plug 'jiangmiao/auto-pairs'
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
@@ -1098,7 +1099,6 @@ Plug 'tomtom/tcomment_vim'
 Plug 'tpope/vim-endwise'
 Plug 'tpope/vim-surround'
 Plug 'sainnhe/gruvbox-material'
-Plug 'ap/vim-buftabline'
 Plug 'git@github.com:kkoomen/vim-doge', { 'do': 'npm i --no-save && npm run build:binary:unix' }
 Plug 'git@github.com:kkoomen/vim-readdir'
 call plug#end()
@@ -1108,6 +1108,8 @@ call plug#end()
 
 let g:gruvbox_bold = 0
 let g:gruvbox_italic = 0
+let g:gruvbox_italicize_strings = 0
+let g:gruvbox_italicize_comments = 0
 let g:gruvbox_material_background = 'soft'
 let g:gruvbox_material_better_performance = 1
 
