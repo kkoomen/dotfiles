@@ -802,24 +802,6 @@ let g:gutentags_ctags_exclude = [
       \ ]
 
 " }}}
-" Plugins: Polyglot {{{
-
-let g:polyglot_disabled = ['markdown']
-
-" JSX
-" ------------------------------------------------------------------------------
-" Allow JSX syntax highlighting in .js files
-" ------------------------------------------------------------------------------
-let g:jsx_ext_required = 0
-
-" Vue
-" ------------------------------------------------------------------------------
-" Fix for css in Vue files having no syntax highlighting
-" https://github.com/posva/vim-vue/issues/135#issuecomment-526167470
-" ------------------------------------------------------------------------------
-let html_no_rendering=1
-
-" }}}
 " Plugins: Surround {{{
 
 " To emulate a modern editor at its best, we want to remap x to Sx for
@@ -1110,7 +1092,6 @@ Plug 'mattn/emmet-vim'
 Plug 'mileszs/ack.vim'
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 Plug 'pechorin/any-jump.vim'
-Plug 'sheerun/vim-polyglot'
 Plug 'sickill/vim-pasta'
 Plug 'skywind3000/asyncrun.vim'
 Plug 'tomtom/tcomment_vim'
