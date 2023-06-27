@@ -1107,9 +1107,9 @@ call plug#end()
 " Color scheme {{{
 
 let g:gruvbox_bold = 0
-let g:gruvbox_italic = 0
+let g:gruvbox_italic = 1
 let g:gruvbox_italicize_strings = 0
-let g:gruvbox_italicize_comments = 0
+let g:gruvbox_italicize_comments = 1
 let g:gruvbox_material_background = 'soft'
 let g:gruvbox_material_better_performance = 1
 
