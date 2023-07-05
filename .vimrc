@@ -700,7 +700,8 @@ endfunction
 " Plugins: indentLine {{{
 
 let g:indentLine_char = '│'
-let g:indentLine_color_gui = '#4C546C'
+let g:markdown_syntax_conceal = 0
+let g:vim_json_conceal = 0
 let g:indentLine_fileTypeExclude = ['tex']
 
 " }}}
@@ -1078,27 +1079,31 @@ Plug 'SirVer/ultisnips'
 Plug 'Yggdroot/indentLine'
 Plug 'alvan/vim-closetag'
 Plug 'arthurxavierx/vim-caser'
+Plug 'chrisbra/csv.vim'
 Plug 'editorconfig/editorconfig-vim'
 Plug 'godlygeek/tabular'
 Plug 'honza/vim-snippets'
 Plug 'itchyny/lightline.vim'
 Plug 'itchyny/vim-gitbranch'
-Plug 'mengelbrecht/lightline-bufferline'
 Plug 'jiangmiao/auto-pairs'
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
 Plug 'junegunn/vader.vim'
 Plug 'ludovicchabant/vim-gutentags'
 Plug 'mattn/emmet-vim'
+Plug 'mengelbrecht/lightline-bufferline'
 Plug 'mileszs/ack.vim'
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 Plug 'pechorin/any-jump.vim'
+Plug 'sainnhe/gruvbox-material'
 Plug 'sickill/vim-pasta'
 Plug 'skywind3000/asyncrun.vim'
 Plug 'tomtom/tcomment_vim'
 Plug 'tpope/vim-endwise'
 Plug 'tpope/vim-surround'
-Plug 'sainnhe/gruvbox-material'
+Plug 'tpope/vim-fugitive'
+Plug 'ivanov/vim-ipython'
+Plug 'git@github.com:kkoomen/vim-jime'
 Plug 'git@github.com:kkoomen/vim-doge', { 'do': 'npm i --no-save && npm run build:binary:unix' }
 Plug 'git@github.com:kkoomen/vim-readdir'
 call plug#end()
@@ -1106,10 +1111,13 @@ call plug#end()
 " }}}
 " Color scheme {{{
 
-let g:gruvbox_bold = 0
+let g:gruvbox_underline = 1
+let g:gruvbox_bold = 1
 let g:gruvbox_italic = 1
 let g:gruvbox_italicize_strings = 0
 let g:gruvbox_italicize_comments = 1
+let g:gruvbox_material_diagnostic_text_highlight = 1
+let g:gruvbox_material_diagnostic_line_highlight = 1
 let g:gruvbox_material_background = 'soft'
 let g:gruvbox_material_better_performance = 1
 
@@ -1124,16 +1132,15 @@ colorscheme gruvbox-material
 highlight! ColorColumn ctermbg=red ctermfg=white guibg=#ea6962 guifg=#252423
 call matchadd('ColorColumn', '\%81v.', 100)
 
-" coc
-highlight! CocErrorSign guifg=#ea6962
-highlight! CocWarningSign guifg=#d8a657
-highlight! CocInfoSign guifg=#d4be98
-highlight! CocHintSign guifg=#7daea3
-" highlight! CocUnusedHighlight guifg=
-
 " Additional java highlighting
 let g:java_highlight_all = 1
 let g:java_highlight_functions = 1
+
+" Markdown codeblocks
+let g:markdown_fenced_languages = [
+      \ 'python', 'javascript', 'typescript', 'php', 'rust', 'sh', 'bash', 'go',
+      \ 'ruby', 'c', 'cpp', 'vim', 'viml=vim', 'dosini', 'ini=dosini', 'html', 'css',
+      \ ]
 
 " }}}
 " SWI-Prolog {{{
