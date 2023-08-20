@@ -277,6 +277,14 @@ function! s:GetRelativeBufferPathInGitDirectory() abort
         \ )
 endfunction
 
+function! s:CompileCProgram() abort
+  if filereadable(getcwd() . '/Makefile')
+    echo "Makefile found, can't compile for a single file"
+  endif
+
+  :!gcc -lcs50 -Wall % && ./a.out
+endfunction
+
 function! s:CompileLatexProject() abort
   let l:mainfile = 'main.tex'
   let l:git_root = <SID>GetGitRoot()
@@ -576,6 +584,10 @@ map <Up> gk
 nnoremap <silent> Z :bprev<CR>
 nnoremap <silent> X :bnext<CR>
 nnoremap <silent> Q :bw<CR>
+
+" C compilation
+" ------------------------------------------------------------------------------
+autocmd FileType c nmap <buffer> R :call <SID>CompileCProgram()<CR>
 
 " LaTeX compilation
 " ------------------------------------------------------------------------------
