@@ -282,7 +282,7 @@ function! s:CompileCProgram() abort
     echo "Makefile found, can't compile for a single file"
   endif
 
-  :!gcc -lcs50 -Wall % && ./a.out
+  :!gcc -lcs50 -Wall % && ./a.out && rm ./a.out
 endfunction
 
 function! s:CompileLatexProject() abort
