@@ -113,9 +113,12 @@ export PATH="/usr/local/opt/php/sbin:$PATH"
 # -- PATH: LLVM
 # Headers can be found with: g++ -E -x c++ - -v < /dev/null
 # and then look for the section: `#include <...> search starts here:`
+# For cs50, see https://github.com/cs50/libcs50
 export PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include:$PATH"
 export PATH="$(echo $BREW_PREFIX/Cellar/llvm/*/bin):$PATH"
 export LD_LIBRARY_PATH="/Library/Developer/CommandLineTools/usr/lib:$LD_LIBRARY_PATH"
+export C_INCLUDE_PATH=/usr/local/include
+export LIBRARY_PATH=/usr/local/lib
 
 # Swift
 export TOOLCHAINS=swift
