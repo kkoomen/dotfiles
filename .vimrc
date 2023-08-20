@@ -702,6 +702,7 @@ endfunction
 let g:indentLine_char = '│'
 let g:markdown_syntax_conceal = 0
 let g:vim_json_conceal = 0
+let g:indentLine_color_gui = '#4C546C'
 let g:indentLine_fileTypeExclude = ['tex']
 
 " }}}
@@ -1085,6 +1086,7 @@ Plug 'godlygeek/tabular'
 Plug 'honza/vim-snippets'
 Plug 'itchyny/lightline.vim'
 Plug 'itchyny/vim-gitbranch'
+Plug 'ivanov/vim-ipython'
 Plug 'jiangmiao/auto-pairs'
 Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
 Plug 'junegunn/fzf.vim'
@@ -1100,9 +1102,8 @@ Plug 'sickill/vim-pasta'
 Plug 'skywind3000/asyncrun.vim'
 Plug 'tomtom/tcomment_vim'
 Plug 'tpope/vim-endwise'
-Plug 'tpope/vim-surround'
 Plug 'tpope/vim-fugitive'
-Plug 'ivanov/vim-ipython'
+Plug 'tpope/vim-surround'
 Plug 'git@github.com:kkoomen/vim-jime'
 Plug 'git@github.com:kkoomen/vim-doge', { 'do': 'npm i --no-save && npm run build:binary:unix' }
 Plug 'git@github.com:kkoomen/vim-readdir'
@@ -1111,14 +1112,14 @@ call plug#end()
 " }}}
 " Color scheme {{{
 
-let g:gruvbox_underline = 1
 let g:gruvbox_bold = 1
 let g:gruvbox_italic = 1
-let g:gruvbox_italicize_strings = 0
+let g:gruvbox_underline = 1
 let g:gruvbox_italicize_comments = 1
-let g:gruvbox_material_diagnostic_text_highlight = 1
+let g:gruvbox_italicize_strings = 0
 let g:gruvbox_material_background = 'soft'
 let g:gruvbox_material_better_performance = 1
+let g:gruvbox_material_diagnostic_text_highlight = 1
 
 set background=dark
 set termguicolors
@@ -1130,6 +1131,13 @@ colorscheme gruvbox-material
 " Only highlight the color column when the line is expanding the 80th column.
 highlight! ColorColumn ctermbg=red ctermfg=white guibg=#ea6962 guifg=#252423
 call matchadd('ColorColumn', '\%81v.', 100)
+
+" coc
+highlight! CocErrorSign guifg=#ea6962
+highlight! CocWarningSign guifg=#d8a657
+highlight! CocInfoSign guifg=#d4be98
+highlight! CocHintSign guifg=#7daea3
+" highlight! CocUnusedHighlight guifg=
 
 " Additional java highlighting
 let g:java_highlight_all = 1
