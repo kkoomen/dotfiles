@@ -1084,6 +1084,12 @@ let g:asyncrun_open = 6
 autocmd User AsyncRunStop call <SID>CloseAsyncRunQuickfixWindow()
 
 " }}}
+" Plugins: vim-visual-multi {{{
+
+" Disable all mappings, except <C-n>
+let g:VM_default_mappings = 0
+
+" }}}
 " Plugins {{{
 
 call plug#begin('~/.vim/plugged')
@@ -1106,6 +1112,7 @@ Plug 'junegunn/vader.vim'
 Plug 'ludovicchabant/vim-gutentags'
 Plug 'mattn/emmet-vim'
 Plug 'mengelbrecht/lightline-bufferline'
+Plug 'mg979/vim-visual-multi'
 Plug 'mileszs/ack.vim'
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 Plug 'pechorin/any-jump.vim'
