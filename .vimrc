@@ -350,6 +350,21 @@ function s:Remove(args) abort
   echo 'Remove: ' . a:args . ' ' . (l:success ? 'succeeded' : 'failed')
 endfunction
 
+function s:FormatCFile() abort
+  let l:cursor_pos = getpos('.')
+
+  " Put all 'else if' on a new line
+  keepjumps call execute(':%s/}\s*else if\s*(/\="}\n" .. repeat(" ", indent(".")) .. "else if ("/g', 'silent!')
+
+  " Put all 'else' on a new line
+  keepjumps call execute(':%s/}\s*else/\="}\n" .. repeat(" ", indent(".")) .. "else"/g', 'silent!')
+
+  " Put all opening brackets on a newline
+  keepjumps call execute(':%s/)\s*{/\=")\n" .. repeat(" ", indent(".")) .. "{"/g', 'silent!')
+
+  call setpos('.', l:cursor_pos)
+endfunction
+
 function s:CSSFormat() abort
   " Save the current window state.
   let l:winview = winsaveview()
@@ -488,6 +503,7 @@ augroup hooks
   autocmd BufReadPost *                     call <SID>OnBufReadPost()
   autocmd VimEnter    *                     call <SID>OnVimEnter()
   autocmd BufWritePre *.{css,scss,less}     call <SID>CSSFormat()
+  autocmd BufWritePre *.c                   call <SID>FormatCFile()
   " autocmd BufWritePost *.py                 :PythonAutoflake
   " autocmd BufWritePre *.ts,*.tsx,*.js,*.jsx :OrganizeImports
 augroup END
@@ -542,9 +558,6 @@ command! -nargs=* -complete=help H call <SID>HelpWindow('<args>')
 " }}}
 
 " Language-specific {{{2
-
-" Format (LE|SA|C)SS.
-command! -nargs=0 CSSFormat call <SID>CSSFormat()
 
 " Convert PHP <= 5.3 syntax array() to [].
 command! -nargs=0 PHPConvertArrays call <SID>PHPConvertArrays()
