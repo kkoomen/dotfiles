@@ -359,8 +359,11 @@ function s:FormatCFile() abort
   " Put all 'else' on a new line
   keepjumps call execute(':%s/}\s*else/\="}\n" .. repeat(" ", indent(".")) .. "else"/g', 'silent!')
 
+  " Put all 'do-while' on a new line
+  keepjumps call execute(':%s/}\s*while/\="}\n" .. repeat(" ", indent(".")) .. "while"/g', 'silent!')
+
   " Put all opening brackets on a newline
-  keepjumps call execute(':%s/)\s*{/\=")\n" .. repeat(" ", indent(".")) .. "{"/g', 'silent!')
+  keepjumps call execute(':%s/\([^[:space:]]\+\)\@<=\s*{$/\="\n" .. repeat(" ", indent(".")) .. "{"/g', 'silent!')
 
   call setpos('.', l:cursor_pos)
 endfunction
@@ -503,7 +506,7 @@ augroup hooks
   autocmd BufReadPost *                     call <SID>OnBufReadPost()
   autocmd VimEnter    *                     call <SID>OnVimEnter()
   autocmd BufWritePre *.{css,scss,less}     call <SID>CSSFormat()
-  autocmd BufWritePre *.c                   call <SID>FormatCFile()
+  autocmd BufWritePre *.{c,h}               call <SID>FormatCFile()
   " autocmd BufWritePost *.py                 :PythonAutoflake
   " autocmd BufWritePre *.ts,*.tsx,*.js,*.jsx :OrganizeImports
 augroup END
