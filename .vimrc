@@ -365,6 +365,9 @@ function s:FormatCFile() abort
   " Put all opening brackets on a newline
   keepjumps call execute(':%s/\([^[:space:]]\+\)\@<=\s*{$/\="\n" .. repeat(" ", indent(".")) .. "{"/g', 'silent!')
 
+  " Remove unnecessary white lines
+  keepjumps call execute(':%s/\n\n\n\+/\r\r/g', 'silent!')
+
   call setpos('.', l:cursor_pos)
 endfunction
 
@@ -1106,6 +1109,24 @@ autocmd User AsyncRunStop call <SID>CloseAsyncRunQuickfixWindow()
 let g:VM_default_mappings = 0
 
 " }}}
+" Plugins: Polyglot {{{
+
+let g:polyglot_disabled = ['markdown']
+
+" JSX
+" ------------------------------------------------------------------------------
+" Allow JSX syntax highlighting in .js files
+" ------------------------------------------------------------------------------
+let g:jsx_ext_required = 0
+
+" Vue
+" ------------------------------------------------------------------------------
+" Fix for css in Vue files having no syntax highlighting
+" https://github.com/posva/vim-vue/issues/135#issuecomment-526167470
+" ------------------------------------------------------------------------------
+let html_no_rendering=1
+
+" }}}
 " Plugins {{{
 
 call plug#begin('~/.vim/plugged')
@@ -1133,6 +1154,7 @@ Plug 'mileszs/ack.vim'
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 Plug 'pechorin/any-jump.vim'
 Plug 'sainnhe/gruvbox-material'
+Plug 'sheerun/vim-polyglot'
 Plug 'sickill/vim-pasta'
 Plug 'skywind3000/asyncrun.vim'
 Plug 'tomtom/tcomment_vim'
