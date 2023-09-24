@@ -161,7 +161,7 @@ augroup styles
   autocmd FileType text,markdown,tex,plaintex set formatoptions+=t
 
   autocmd BufRead,BufNewFile *.min.* setlocal syntax=off
-  autocmd FileType java,python,go,apache,tex,plaintex,rust setlocal tabstop=4 shiftwidth=4 softtabstop=4
+  autocmd FileType asm,java,python,go,apache,tex,plaintex,rust setlocal tabstop=4 shiftwidth=4 softtabstop=4
   autocmd FileType php setlocal iskeyword-=-
   autocmd FileType css,less,scss setlocal iskeyword+=.
   autocmd FileType vim setlocal iskeyword+=: foldmethod=marker
@@ -538,6 +538,9 @@ command! -nargs=0 BP :let @+=expand('%:p') | echo @*
 " Set the path of the current buffer relative to its git diretory to the
 " system clipboard. 'GBP' refers for 'Git Buffer Path'.
 command! -nargs=0 GBP :let @+=<SID>GetRelativeBufferPathInGitDirectory() | echo @*
+
+" Pastebin
+command! -range=% PB <line1>,<line2>w !curl -s -F 'clbin=<-' https://clbin.com | tr -d '\n' | tee >(pbcopy) | cat
 
 " Git Blame
 "

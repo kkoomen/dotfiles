@@ -22,6 +22,3 @@ alias lip="ipconfig getifaddr en0"
 alias bashrc="vim ~/.bashrc"
 alias vimrc="vim ~/.vimrc"
 alias reload="source ~/.bash_profile"
-
-# DOCKER
-alias dsh="docker-compose exec php bash"

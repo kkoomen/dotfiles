@@ -7,6 +7,7 @@ function mergepdf {
   gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile="$output_file" "$@"
 }
 
+# Generate an `.editorconfig` file
 function editorconfig-init {
     if [[ -f .editorconfig ]]; then
         echo "[ERROR] .editorconfig config already exists in $(pwd)"
@@ -27,10 +28,7 @@ function editorconfig-init {
     fi
 }
 
-function jb {
-  curl -s -F file=@- -F expire="${1:-}" https://jinb.in
-}
-
+# Lookup a command through chsh
 function chsh() {
   local lang=$1
   shift
@@ -40,6 +38,7 @@ function chsh() {
   curl cht.sh/$lang/$keywords
 }
 
+# Get current git branch name
 function git-branch {
   # Based on: http://stackoverflow.com/a/13003854/170413
   local branch
@@ -61,6 +60,7 @@ function git-branch {
 
 }
 
+# Get the current virtual env name
 function get-virtualenv {
   local venv
   if [[ ! -z "$VIRTUAL_ENV" ]]; then
@@ -82,37 +82,36 @@ function prefix-css {
   fi
 }
 
+# Usage: START_TIME END_TIME INPUT_FILE OUTPUT_FILE
+# Example: cut-mp3 00:00:30 00:02:00 input.mp3 output.mp3
 function cut-mp3 {
   ffmpeg -i "$1" -ss "$3" -to "$4" -c copy "${2:-$1}"
 }
 
+# Generate 4 random digits
 function 4digits {
   n=$((1000 + RANDOM % 9999))
   echo ${n:0:4}
 }
 
+# Get current weather forecast based on IP
 function weather {
   langcode=$(curl -s ipinfo.io/country)
   curl wttr.in/~$langcode
 }
 
-function vim-format {
-  # Example:
-  # find . -name "*.js" -not -path "*/node_modules/*" -exec sh -c "echo {}; vim '+normal! gg=G' '+wq' {} > /dev/null 2>&1" \;
-  if [[ "$1" == "" ]]; then
-    echo "Usage: vim-format <file>"
-  else
-    # +normal! gg=G
-    #   This command will indent all the code (hopefully in a proper way).
-    # +wq
-    #   Save and quit.
-    echo "Formatting $1..."
-    vim '+normal! gg=G' '+wq' "$1" > /dev/null 2>&1
-  fi
-}
-
+# Generate gitignore file
 function gi() {
   curl -sL https://www.toptal.com/developers/gitignore/api/$@
+}
+
+# Pastebin
+function pb() {
+  if [[ -z "$1" ]]; then
+    curl -F "clbin=<-" https://clbin.com
+  else
+    cat "$1" | curl -F "clbin=<-" https://clbin.com
+  fi
 }
 
 
