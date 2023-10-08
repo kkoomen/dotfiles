@@ -143,6 +143,11 @@ augroup latex
   autocmd BufRead,BufNewFile *.tex setlocal filetype=tex
 augroup END
 
+augroup assembly
+  autocmd!
+  autocmd BufRead,BufNewFile *.{asm,wasm} setlocal filetype=asm
+augroup END
+
 augroup rc
   autocmd!
   autocmd BufRead,BufNewFile .babelrc,.stylelintrc,.prettierrc,.htmlhintrc setlocal filetype=json
@@ -1032,11 +1037,11 @@ function LightlineWordCount() abort
     let g:word_count = wordcount().cursor_words . '/' . wordcount().words " or shows words 'so far'
   endif
 
-  return 'words:' . g:word_count . ', chars:' . (wordcount().chars - 1)
+  return 'words:' . g:word_count . ', chars:' . max([0, wordcount().chars - 1])
 endfunction
 
 let g:lightline = {
-      \  'colorscheme': 'gruvbox_material',
+      \  'colorscheme': 'everforest',
       \  'active': {
       \    'left': [
       \      ['mode', 'paste'],
@@ -1156,7 +1161,7 @@ Plug 'mg979/vim-visual-multi'
 Plug 'mileszs/ack.vim'
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 Plug 'pechorin/any-jump.vim'
-Plug 'sainnhe/gruvbox-material'
+Plug 'sainnhe/everforest'
 Plug 'sheerun/vim-polyglot'
 Plug 'sickill/vim-pasta'
 Plug 'skywind3000/asyncrun.vim'
@@ -1172,31 +1177,33 @@ call plug#end()
 " }}}
 " Color scheme {{{
 
-let g:gruvbox_bold = 1
-let g:gruvbox_italic = 1
-let g:gruvbox_underline = 1
-let g:gruvbox_italicize_comments = 1
-let g:gruvbox_italicize_strings = 0
-let g:gruvbox_material_background = 'soft'
-let g:gruvbox_material_better_performance = 1
-let g:gruvbox_material_diagnostic_text_highlight = 1
+let g:everforest_background = 'hard'
+let g:everforest_better_performance = 1
+let g:everforest_enable_italic = 0
+let g:everforest_disable_italic_comment = 1
+let g:everforest_transparent_background = 0
+let g:everforest_spell_foreground = 1
+let g:everforest_ui_contrast = 'low'
 
 set background=dark
 set termguicolors
-colorscheme gruvbox-material
+colorscheme everforest
 
 " }}}
 " Custom Highlighting {{{
+
+" Add underline for incorrectly spelled words.
+hi SpellBad cterm=underline
 
 " Only highlight the color column when the line is expanding the 80th column.
 highlight! ColorColumn ctermbg=red ctermfg=white guibg=#ea6962 guifg=#252423
 call matchadd('ColorColumn', '\%81v.', 100)
 
 " coc
-highlight! CocErrorSign guifg=#ea6962
-highlight! CocWarningSign guifg=#d8a657
-highlight! CocInfoSign guifg=#d4be98
-highlight! CocHintSign guifg=#7daea3
+" highlight! CocErrorSign guifg=#ea6962
+" highlight! CocWarningSign guifg=#d8a657
+" highlight! CocInfoSign guifg=#d4be98
+" highlight! CocHintSign guifg=#7daea3
 " highlight! CocUnusedHighlight guifg=
 
 " Additional java highlighting
