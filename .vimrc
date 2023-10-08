@@ -984,7 +984,33 @@ inoremap <silent><expr> <CR> coc#pum#visible() ? coc#pum#confirm()
 " Plugins: Lightline {{{
 
 function! LightlineFilename() abort
-  return expand('%:p') !=# '' ? expand('%:p') : '[No Name]'
+  let l:path = expand('%:p')
+  if l:path ==# ''
+    return '[No Name]'
+  endif
+
+  " If the winwidth is below a certain threshold, just show
+  " <parent-folder>/<filename>.<ext>
+  let l:win_width = winwidth(winnr())
+  if l:win_width <= 140
+    return expand('%:p:h:t') . '/'. expand('%:t')
+  endif
+
+  " The path should be at most some percent of the total width
+  let l:max_percent_width = 0.3
+  let l:max_width = l:win_width * l:max_percent_width
+
+  " If the current width exceeds the maximum we occupy, only show the first
+  " character of the highest parent directory, resulting in something like
+  " /U/k/t/p/some/dir/myfile.txt
+  let l:index = 0
+  let l:path_splitted = split(l:path, '/')
+  while len('/' . join(l:path_splitted, '/')) >= l:max_width && l:index < len(l:path_splitted) - 2
+    let l:path_splitted[l:index] = l:path_splitted[l:index][0]
+    let l:index += 1
+  endwhile
+
+  return '/' . join(l:path_splitted, '/')
 endfunction
 
 function! LightlineReadonly() abort
