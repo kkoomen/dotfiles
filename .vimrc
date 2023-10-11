@@ -166,7 +166,7 @@ augroup styles
   autocmd FileType text,markdown,tex,plaintex set formatoptions+=t
 
   autocmd BufRead,BufNewFile *.min.* setlocal syntax=off
-  autocmd FileType asm,java,python,go,apache,tex,plaintex,rust setlocal tabstop=4 shiftwidth=4 softtabstop=4
+  autocmd FileType c,asm,java,python,go,apache,tex,plaintex,rust setlocal tabstop=4 shiftwidth=4 softtabstop=4
   autocmd FileType php setlocal iskeyword-=-
   autocmd FileType css,less,scss setlocal iskeyword+=.
   autocmd FileType vim setlocal iskeyword+=: foldmethod=marker
@@ -287,7 +287,7 @@ function! s:CompileCProgram() abort
     echo "Makefile found, can't compile for a single file"
   endif
 
-  :!gcc -lcs50 -Wall % && ./a.out && rm ./a.out
+  :!clang -lcs50 -lm -Wall % && ./a.out && rm ./a.out
 endfunction
 
 function! s:CompileLatexProject() abort
