@@ -359,16 +359,16 @@ function s:FormatCFile() abort
   let l:cursor_pos = getpos('.')
 
   " Put all 'else if' on a new line
-  keepjumps call execute(':%s/}\s*else if\s*(/\="}\n" .. repeat(" ", indent(".")) .. "else if ("/g', 'silent!')
+  keepjumps call execute(':%s/\%(\/\/.*\)\@<!}\s*else if\s*(/\="}\n" .. repeat(" ", indent(".")) .. "else if ("/g', 'silent!')
 
   " Put all 'else' on a new line
-  keepjumps call execute(':%s/}\s*else/\="}\n" .. repeat(" ", indent(".")) .. "else"/g', 'silent!')
+  keepjumps call execute(':%s/\%(\/\/.*\)\@<!}\s*else/\="}\n" .. repeat(" ", indent(".")) .. "else"/g', 'silent!')
 
   " Put all 'do-while' on a new line
-  keepjumps call execute(':%s/}\s*while/\="}\n" .. repeat(" ", indent(".")) .. "while"/g', 'silent!')
+  keepjumps call execute(':%s/\%(\/\/.*\)\@<!}\s*while/\="}\n" .. repeat(" ", indent(".")) .. "while"/g', 'silent!')
 
   " Put all opening brackets on a newline
-  keepjumps call execute(':%s/\([^[:space:]]\+\)\@<=\s*{$/\="\n" .. repeat(" ", indent(".")) .. "{"/g', 'silent!')
+  keepjumps call execute(':%s/\%(\/\/.*\)\@<!\([^[:space:]]\+\)\@<=\s*{$/\="\n" .. repeat(" ", indent(".")) .. "{"/g', 'silent!')
 
   " Remove unnecessary white lines
   keepjumps call execute(':%s/\n\n\n\+/\r\r/g', 'silent!')
