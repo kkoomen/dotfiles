@@ -95,6 +95,7 @@ apps=(
   typescript
   gh
   swi-prolog
+  jupyter
 
   # Development: C
   ccls

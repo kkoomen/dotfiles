@@ -989,15 +989,9 @@ function! LightlineFilename() abort
     return '[No Name]'
   endif
 
-  " If the winwidth is below a certain threshold, just show
-  " <parent-folder>/<filename>.<ext>
-  let l:win_width = winwidth(winnr())
-  if l:win_width <= 140
-    return expand('%:p:h:t') . '/'. expand('%:t')
-  endif
-
   " The path should be at most some percent of the total width
   let l:max_percent_width = 0.3
+  let l:win_width = winwidth(winnr())
   let l:max_width = l:win_width * l:max_percent_width
 
   " If the current width exceeds the maximum we occupy, only show the first
@@ -1005,12 +999,25 @@ function! LightlineFilename() abort
   " /U/k/t/p/some/dir/myfile.txt
   let l:index = 0
   let l:path_splitted = split(l:path, '/')
-  while len('/' . join(l:path_splitted, '/')) >= l:max_width && l:index < len(l:path_splitted) - 2
+  let l:new_path = l:path
+  while len(l:new_path) >= l:max_width && l:index < len(l:path_splitted) - 1
     let l:path_splitted[l:index] = l:path_splitted[l:index][0]
     let l:index += 1
+    let l:new_path = '/' . join(l:path_splitted, '/')
   endwhile
 
-  return '/' . join(l:path_splitted, '/')
+  " Check if the name is still too long, if so, truncate as well:
+  if len(l:new_path) > l:max_width
+    " Only show <parent-folder>/<file>.<ext>
+    let l:new_path = expand('%:p:h:t') . '/'. expand('%:t')
+
+    if len(l:new_path) > l:max_width
+      " Only show <file>.<ext>
+      let l:new_path = expand('%:t')
+    endif
+  endif
+
+  return l:new_path
 endfunction
 
 function! LightlineReadonly() abort
