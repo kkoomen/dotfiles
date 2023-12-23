@@ -7,6 +7,9 @@ function mergepdf {
   gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile="$output_file" "$@"
 }
 
+# Example usage:
+# mergepdf merged.pdf file1.pdf file2.pdf file3.pdf
+
 # Generate an `.editorconfig` file
 function editorconfig-init {
     if [[ -f .editorconfig ]]; then

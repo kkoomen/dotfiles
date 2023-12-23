@@ -1330,6 +1330,8 @@ Reset</string>
 			<false/>
 			<key>Background Image Location</key>
 			<string></string>
+			<key>Background Image Mode</key>
+			<integer>0</integer>
 			<key>Badge Color</key>
 			<dict>
 				<key>Alpha Component</key>
@@ -1352,7 +1354,7 @@ Reset</string>
 			<key>Blur</key>
 			<true/>
 			<key>Blur Radius</key>
-			<real>30</real>
+			<real>0.10000000000000001</real>
 			<key>Bold Color</key>
 			<dict>
 				<key>Alpha Component</key>

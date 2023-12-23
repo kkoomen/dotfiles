@@ -3,6 +3,7 @@
 # This file is used to install the system dependencies.
 
 bash ~/dotfiles/update.sh
+bash ~/dotfiles/scripts/bin/install_neovim.sh
 bash ~/dotfiles/scripts/bin/install_nvm.sh
 bash ~/dotfiles/scripts/bin/install_brew_packages.sh
 bash ~/dotfiles/scripts/bin/install_linters.sh

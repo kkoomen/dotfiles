@@ -1,0 +1,43 @@
+vim.opt.number = true
+vim.opt.swapfile = false
+vim.opt.backup = false
+vim.opt.writebackup = false
+vim.opt.updatetime = 300
+vim.opt.signcolumn = 'yes'
+vim.opt.spelllang = 'en_gb,nl'
+vim.opt.scrolloff = 4
+vim.opt.clipboard = 'unnamed'
+vim.o.guicursor = 'n-v-c:block-Cursor'
+vim.opt.list = true
+vim.api.nvim_set_option('listchars', 'tab:│ ,trail:•')
+
+vim.o.ignorecase = true        -- Ignore case when searching
+vim.o.smartcase = true         -- Override 'ignorecase' if the pattern contains uppercase characters
+vim.o.incsearch = true         -- Show match for the search pattern as you type
+
+-- Set spaces width
+local spaces = 2
+vim.o.shiftwidth = spaces
+vim.o.tabstop = spaces
+vim.o.softtabstop = spaces
+vim.o.expandtab = true
+
+-- Colorscheme
+vim.g.everforest_background = 'hard'
+vim.g.everforest_better_performance = 1
+vim.g.everforest_enable_italic = 0
+vim.g.everforest_disable_italic_comment = 1
+vim.g.everforest_transparent_background = 0
+vim.g.everforest_spell_foreground = 1
+vim.g.everforest_ui_contrast = 'low'
+vim.cmd('colorscheme everforest')
+
+-- Markdown code blocks highlighting
+vim.g.markdown_fenced_languages = {
+  'python', 'javascript', 'typescript', 'php', 'rust', 'sh', 'bash', 'go',
+  'ruby', 'c', 'cpp', 'vim', 'viml=vim', 'dosini', 'ini=dosini', 'html', 'css',
+}
+
+-- Only highlight the color column when the line is expanding the 80th column.
+vim.cmd('highlight ColorColumn ctermbg=red ctermfg=white guibg=#ea6962 guifg=#252423')
+vim.fn.matchadd('ColorColumn', '\\%81v.', 100)

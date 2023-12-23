@@ -1,0 +1,11 @@
+-- Spellcheck
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'text,markdown,tex,plaintex',
+  command = 'setlocal spell conceallevel=0'
+})
+
+-- Indentation
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'c,asm,java,python,go,apache,tex,plaintex,rust',
+  command = 'setlocal tabstop=4 shiftwidth=4 softtabstop=4'
+})

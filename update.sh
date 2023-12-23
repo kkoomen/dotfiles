@@ -9,12 +9,10 @@ NC='\033[0m'
 
 # List of files to symlink.
 FILES=(
-  # Files to symlink
   .bashrc
   .bash_aliases
   .bash_functions
   .bash_profile
-  .vimrc
   .inputrc
   .weechat/logger.conf
   .weechat/spell.conf
@@ -26,8 +24,9 @@ FILES=(
   Library/KeyBindings/DefaultKeyBinding.dict
   .config/mpv/mpv.conf
 
-  # Directories to symlink.
-  .vim/
+  # .vimrc
+  .config/nvim/init.lua
+  .config/nvim/lua/
 )
 
 # Files that must exist.
@@ -35,6 +34,7 @@ TOUCH_FILES=()
 
 # Directories that must exist.
 TOUCH_DIRS=(
+  .config/nvim/
   .config/mpv/
   .ssh/
   .weechat/
