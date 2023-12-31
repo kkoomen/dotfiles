@@ -1,4 +1,5 @@
 require('nvim-treesitter.configs').setup {
+  -- Enable auto-tag for html files
   autotag = {
     enable = true,
     enable_rename = true,

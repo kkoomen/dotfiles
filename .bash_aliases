@@ -1,6 +1,7 @@
 shopt -s expand_aliases
 
 # General
+alias vim="nvim"
 alias ls="ls -lhGp"
 alias sl="ls"
 alias tree="tree -C"

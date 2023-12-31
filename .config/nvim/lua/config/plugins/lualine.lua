@@ -3,13 +3,13 @@ local function statusline_indent()
 end
 
 local function statusline_readonly()
-    return vim.bo.readonly and '' or ''
+  return vim.bo.readonly and '' or ''
 end
 
 local function statusline_filename()
   local path = vim.fn.expand('%:p')
   if path == '' then
-      return '[No Name]'
+    return '[No Name]'
   end
 
   -- The path should be at most some percent of the total width
@@ -23,20 +23,20 @@ local function statusline_filename()
   local path_splitted = vim.fn.split(path, '/')
   local new_path = path
   while #new_path >= max_width and index < #path_splitted do
-      path_splitted[index] = path_splitted[index]:sub(1, 1)
-      index = index + 1
-      new_path = '/' .. table.concat(path_splitted, '/')
+    path_splitted[index] = path_splitted[index]:sub(1, 1)
+    index = index + 1
+    new_path = '/' .. table.concat(path_splitted, '/')
   end
 
   -- Check if the name is still too long, if so, truncate as well
   if #new_path > max_width then
-      -- Only show <parent-folder>/<file>.<ext>
-      new_path = vim.fn.expand('%:p:h:t') .. '/' .. vim.fn.expand('%:t')
+    -- Only show <parent-folder>/<file>.<ext>
+    new_path = vim.fn.expand('%:p:h:t') .. '/' .. vim.fn.expand('%:t')
 
-      if #new_path > max_width then
-          -- Only show <file>.<ext>
-          new_path = vim.fn.expand('%:t')
-      end
+    if #new_path > max_width then
+      -- Only show <file>.<ext>
+      new_path = vim.fn.expand('%:t')
+    end
   end
 
   return new_path
@@ -47,15 +47,15 @@ local function statusline_wordcount()
   local allowed_filetypes = {'', 'text', 'markdown', 'tex', 'asciidoc', 'help', 'mail', 'org', 'rst'}
   local ft_index = vim.fn.index(allowed_filetypes, vim.bo.ft)
   if ft_index < 0 then
-      return ''
+    return ''
   end
 
   -- Calculate word count
   local word_count
   if vim.fn.has_key(vim.fn.wordcount(), 'visual_words') == 1 then
-      word_count = vim.fn.wordcount().visual_words .. '/' .. vim.fn.wordcount().words
+    word_count = vim.fn.wordcount().visual_words .. '/' .. vim.fn.wordcount().words
   else
-      word_count = vim.fn.wordcount().cursor_words .. '/' .. vim.fn.wordcount().words
+    word_count = vim.fn.wordcount().cursor_words .. '/' .. vim.fn.wordcount().words
   end
 
   -- Calculate character count
@@ -81,7 +81,16 @@ require('lualine').setup {
   },
   sections = {
     lualine_b = {
-      { 'branch', fmt = function(str) return ' ' .. str end }
+      {
+        'branch',
+        fmt = function(str)
+          if #str > 0 then
+            return ' ' .. str
+          end
+
+          return str
+        end,
+      }
     },
     lualine_c = {
       statusline_readonly,
@@ -93,6 +102,18 @@ require('lualine').setup {
       'encoding',
       'fileformat',
       'filetype',
+    },
+    lualine_y = {
+      {
+        'progress',
+        fmt = function(str)
+          if str == 'Bot' then
+            return '100%%'
+          end
+
+          return str
+        end
+      }
     },
   }
 }

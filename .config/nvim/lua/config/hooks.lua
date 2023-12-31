@@ -11,37 +11,37 @@ local function delete_trailing_leading_lines()
 end
 
 vim.api.nvim_create_autocmd('BufWritePre', {
-pattern = '*',
-callback = function()
-  -- Save the current window view
-  local winview = vim.fn.winsaveview()
+  pattern = '*',
+  callback = function()
+    -- Save the current window view
+    local winview = vim.fn.winsaveview()
 
-  delete_trailing_leading_lines()
+    delete_trailing_leading_lines()
 
-  -- Execute commands only for non-test files
-  local ignore_pattern = [[\v(vader|gitcommit)]]
-  if vim.bo.filetype ~= '' and not vim.fn.match(vim.bo.filetype, ignore_pattern) then
-    -- Delete trailing whitespaces for each line
-    vim.cmd([[keepjumps %s/\s\+$//ge]])
+    -- Execute commands only for non-test files
+    local ignore_pattern = [[\v(vader|gitcommit)]]
+    if vim.bo.filetype ~= '' and not vim.fn.match(vim.bo.filetype, ignore_pattern) then
+      -- Delete trailing whitespaces for each line
+      vim.cmd([[keepjumps %s/\s\+$//ge]])
 
-    -- We want to 'retab!' the whole file, but this will convert spaces to tabs
-    -- inside comments when using tabs. To fix this, we will check if tabs are
-    -- used, then convert everything to spaces and then convert the indentation
-    -- to tabs.
-    if vim.bo.expandtab == false then
-      vim.bo.expandtab = true
-      vim.cmd('keepjumps %retab!')
-      vim.cmd('keepjumps %s/^\\s\\+/\\=string.rep("\\t", math.floor(#submatch(0) / vim.bo.shiftwidth)) .. string.rep(" ", #submatch(0) % vim.bo.shiftwidth)')
-      vim.cmd('silent! noh')
-      vim.bo.expandtab = false
-    else
-      vim.cmd('keepjumps %retab!')
+      -- We want to 'retab!' the whole file, but this will convert spaces to tabs
+      -- inside comments when using tabs. To fix this, we will check if tabs are
+      -- used, then convert everything to spaces and then convert the indentation
+      -- to tabs.
+      if vim.bo.expandtab == false then
+        vim.bo.expandtab = true
+        vim.cmd('keepjumps %retab!')
+        vim.cmd('keepjumps %s/^\\s\\+/\\=string.rep("\\t", math.floor(#submatch(0) / vim.bo.shiftwidth)) .. string.rep(" ", #submatch(0) % vim.bo.shiftwidth)')
+        vim.cmd('silent! noh')
+        vim.bo.expandtab = false
+      else
+        vim.cmd('keepjumps %retab!')
+      end
     end
-  end
 
-  -- Restore the window view
-  vim.fn.winrestview(winview)
-end
+    -- Restore the window view
+    vim.fn.winrestview(winview)
+  end
 })
 
 vim.api.nvim_create_autocmd('BufWritePre', {

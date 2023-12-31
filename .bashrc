@@ -5,14 +5,13 @@ case $- in
 esac
 
 # PATH
-export PATH="/usr/local/bin:$PATH"
-export PATH="/usr/local/sbin:$PATH"
-export PATH="/opt/homebrew/bin:$PATH"
+export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 
 export BREW_PREFIX="$(brew --prefix)"
 
 # Base variable exporting.
-export EDITOR=vim
+export EDITOR=nvim
 export NODE_ENV=development
 export TERM=xterm-256color
 
@@ -119,6 +118,9 @@ export PATH="$(echo $BREW_PREFIX/Cellar/llvm/*/bin):$PATH"
 export LD_LIBRARY_PATH="/Library/Developer/CommandLineTools/usr/lib:$LD_LIBRARY_PATH"
 export C_INCLUDE_PATH=/usr/local/include
 export LIBRARY_PATH=/usr/local/lib
+
+# Lua
+# export PATH="/opt/homebrew/opt/lua@5.3/bin:$PATH"
 
 # Swift
 export TOOLCHAINS=swift

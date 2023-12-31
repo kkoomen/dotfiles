@@ -7,10 +7,19 @@ vim.opt.signcolumn = 'yes'
 vim.opt.spelllang = 'en_gb,nl'
 vim.opt.scrolloff = 4
 vim.opt.clipboard = 'unnamed'
-vim.o.guicursor = 'n-v-c:block-Cursor'
 vim.opt.list = true
+vim.opt.foldmethod =  'marker'
+vim.o.guicursor = 'n-v-c:block-Cursor'
 vim.api.nvim_set_option('listchars', 'tab:│ ,trail:•')
 
+-- Undo history
+vim.opt.undofile = true                 -- Save undo's after file closes.
+vim.opt.undodir = '~/.vim/undo,/tmp' -- Where to save undo histories.
+vim.opt.undolevels = 1000          -- How many undos.
+vim.opt.undoreload = 10000         -- Number of lines to save for undo.
+vim.opt.history = 3000             -- Sets how many lines of history vim has to remember.
+
+-- Casing
 vim.o.ignorecase = true        -- Ignore case when searching
 vim.o.smartcase = true         -- Override 'ignorecase' if the pattern contains uppercase characters
 vim.o.incsearch = true         -- Show match for the search pattern as you type

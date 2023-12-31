@@ -54,6 +54,9 @@ require('packer').startup(function(use)
     config = function() require('config.plugins.vis') end
   }
 
+  -- Change single lines to multilines and vice versa
+  use 'AndrewRadev/splitjoin.vim'
+
   -- Align block of contents on specific delimiter
   use 'godlygeek/tabular'
 
