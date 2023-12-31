@@ -57,4 +57,5 @@ vim.g.coc_global_extensions = {
   'coc-java',
   'coc-rust-analyzer',
   'coc-texlab',
+  'coc-lua',
 }

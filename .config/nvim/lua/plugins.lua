@@ -135,7 +135,6 @@ require('packer').startup(function(use)
     tag = '0.1.5',
     requires = { {'nvim-lua/plenary.nvim'} },
     config = function()
-      require('telescope').setup {}
       require('config.plugins.telescope')
     end
   }
