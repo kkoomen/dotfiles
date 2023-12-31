@@ -1,6 +1,7 @@
-vim.opt.number = true
-vim.opt.swapfile = false
-vim.opt.backup = false
+vim.opt.number = true                                     -- show line numbers
+vim.opt.wrap = true                                      -- enable line wrapping
+vim.opt.swapfile = false                                  -- disable swap files
+vim.opt.backup = false                                    -- disable backup files
 vim.opt.writebackup = false
 vim.opt.updatetime = 300
 vim.opt.signcolumn = 'yes'

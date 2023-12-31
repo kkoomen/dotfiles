@@ -6,6 +6,3 @@ require('config.autocmd')
 require('config.mappings')
 require('config.hooks')
 require('config.commands')
--- TODO: show git buffer commits
--- TODO: add custom snippets
--- TODO: pressing <CR> auto-complete with filepath OR one suggetion not confirming

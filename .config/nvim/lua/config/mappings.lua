@@ -13,3 +13,6 @@ vim.keymap.set('n', 'Z', ':bprev<CR>', { noremap = true, silent = true })
 
 -- Map ; to : for convenience
 vim.keymap.set('n', ';', ':', { noremap = true, silent = true })
+
+-- Clear search highlighting when pressing spacebar
+vim.keymap.set('n', '<SPACE>', ':silent! noh<CR>', { noremap = true, silent = true, nowait = true })
