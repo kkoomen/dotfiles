@@ -7,7 +7,7 @@ made and many other things.
 # Getting started
 
 ```
-$ git clone --recursive --shallow-submodules https://github.com/kkoomen/dotfiles-osx dotfiles
+$ git clone --recursive --shallow-submodules https://github.com/kkoomen/dotfiles
 $ cd dotfiles
 ```
 
@@ -15,9 +15,9 @@ $ cd dotfiles
 
 After pulling the repository, run the following scripts:
 
-```
+```sh
 $ bash scripts/install_1.sh
--- reboot
+# reboot your device
 $ bash scripts/install_2.sh
 ```
 
