@@ -30,12 +30,12 @@ vim.api.nvim_create_autocmd('BufWritePre', {
       -- to tabs.
       if vim.bo.expandtab == false then
         vim.bo.expandtab = true
-        vim.cmd('keepjumps %retab!')
-        vim.cmd('keepjumps %s/^\\s\\+/\\=string.rep("\\t", math.floor(#submatch(0) / vim.bo.shiftwidth)) .. string.rep(" ", #submatch(0) % vim.bo.shiftwidth)')
+        vim.cmd('silent! keepjumps %retab!')
+        vim.cmd('silent! keepjumps %s/^\\s\\+/\\=string.rep("\\t", math.floor(#submatch(0) / vim.bo.shiftwidth)) .. string.rep(" ", #submatch(0) % vim.bo.shiftwidth)')
         vim.cmd('silent! noh')
         vim.bo.expandtab = false
       else
-        vim.cmd('keepjumps %retab!')
+        vim.cmd('silent! keepjumps %retab!')
       end
     end
 
@@ -51,28 +51,28 @@ vim.api.nvim_create_autocmd('BufWritePre', {
     local winview = vim.fn.winsaveview()
 
     -- Remove all lines with nothing but spaces
-    vim.cmd('keepjumps g/^[\n[:space:]]*$/d _')
+    vim.cmd('silent! keepjumps g/^[\n[:space:]]*$/d _')
 
     -- Add lines in-between selector blocks
-    vim.cmd('keepjumps %s/\\v(#.-)@<!([};])(.-%(//[^\n]*\\|/\\*.-\\*/[^\n]*)\\)\\?\\(_[^;{}]-{)@=/\\1\\2\\r/g')
+    vim.cmd('silent! keepjumps %s/\\v(#.-)@<!([};])(.-%(//[^\n]*\\|/\\*.-\\*/[^\n]*)\\)\\?\\(_[^;{}]-{)@=/\\1\\2\\r/g')
 
     -- Add lines in-between closing bracket and variables
-    vim.cmd('keepjumps %s/\\(}\\)\\(_[[:space:]]-\\$)@=/\\1\\r/g')
+    vim.cmd('silent! keepjumps %s/\\(}\\)\\(_[[:space:]]-\\$)@=/\\1\\r/g')
 
     -- Add lines in-between @import and other expressions starting with '@'
-    vim.cmd('keepjumps %s/}\\n@\\([[:alpha:]]\\+\\)/}\\r\\r@\\1/g')
+    vim.cmd('silent! keepjumps %s/}\\n@\\([[:alpha:]]\\+\\)/}\\r\\r@\\1/g')
 
     -- Remove all extra lines between closing brackets
-    vim.cmd('keepjumps g/}[}\\n[:space:]]*}/s/\\n^[\\n[:space:]]*$//g')
+    vim.cmd('silent! keepjumps g/}[}\\n[:space:]]*}/s/\\n^[\\n[:space:]]*$//g')
 
     -- Remove all extra lines
-    vim.cmd('keepjumps %s/\\n\\{3,}/\\r\\r/g')
+    vim.cmd('silent! keepjumps %s/\\n\\{3,}/\\r\\r/g')
 
     -- Ensure every property is spaced correctly
-    vim.cmd('keepjumps %s/^\\(\\s*[[:alnum:]-]\\+\\)\\s*:\\s*\\(_[^:]\\{-};\\)$/\\1: \\2/g')
+    vim.cmd('silent! keepjumps %s/^\\(\\s*[[:alnum:]-]\\+\\)\\s*:\\s*\\(_[^:]\\{-};\\)$/\\1: \\2/g')
 
     -- Ensure selectors and opening brackets are a single whitespace
-    vim.cmd('keepjumps %s/\\v(#)@<!\\s*{/ {/g')
+    vim.cmd('silent! keepjumps %s/\\v(#)@<!\\s*{/ {/g')
 
     delete_trailing_leading_lines()
 
@@ -90,19 +90,19 @@ vim.api.nvim_create_autocmd('BufWritePre', {
     local cursor_pos = vim.fn.getpos('.')
 
     -- Put all 'else if' on a new line
-    vim.cmd('keepjumps %s/\\%(\\/\\/.*\\)\\@<!}\\s*else if\\s*(/\\="}\\n" .. string.rep(" ", vim.fn.indent(".")) .. "else if ("/g')
+    vim.cmd('silent! keepjumps %s/\\%(\\/\\/.*\\)\\@<!}\\s*else if\\s*(/\\="}\\n" .. string.rep(" ", vim.fn.indent(".")) .. "else if ("/g')
 
     -- Put all 'else' on a new line
-    vim.cmd('keepjumps %s/\\%(\\/\\/.*\\)\\@<!}\\s*else/\\="}\\n" .. string.rep(" ", vim.fn.indent(".")) .. "else"/g')
+    vim.cmd('silent! keepjumps %s/\\%(\\/\\/.*\\)\\@<!}\\s*else/\\="}\\n" .. string.rep(" ", vim.fn.indent(".")) .. "else"/g')
 
     -- Put all 'do-while' on a new line
-    vim.cmd('keepjumps %s/\\%(\\/\\/.*\\)\\@<!}\\s*while/\\="}\\n" .. string.rep(" ", vim.fn.indent(".")) .. "while"/g')
+    vim.cmd('silent! keepjumps %s/\\%(\\/\\/.*\\)\\@<!}\\s*while/\\="}\\n" .. string.rep(" ", vim.fn.indent(".")) .. "while"/g')
 
     -- Put all opening brackets on a newline
-    vim.cmd('keepjumps %s/\\%(\\/\\/.*\\)\\@<!\\([^[:space:]]\\+\\)\\@<=\\s*{$/\\="\\n" .. string.rep(" ", vim.fn.indent(".")) .. "{"/g')
+    vim.cmd('silent! keepjumps %s/\\%(\\/\\/.*\\)\\@<!\\([^[:space:]]\\+\\)\\@<=\\s*{$/\\="\\n" .. string.rep(" ", vim.fn.indent(".")) .. "{"/g')
 
     -- Remove unnecessary white lines
-    vim.cmd('keepjumps %s/\\n\\n\\n\\+/\\r\\r/g')
+    vim.cmd('silent! keepjumps %s/\\n\\n\\n\\+/\\r\\r/g')
 
     vim.fn.setpos('.', cursor_pos)
   end

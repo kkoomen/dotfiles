@@ -5,7 +5,7 @@ require("luasnip.loaders.from_vscode").lazy_load()
 local cmp = require('cmp')
 local luasnip = require('luasnip')
 
-local select_opts = {behavior = cmp.SelectBehavior.Select}
+local select_opts = { behavior = cmp.SelectBehavior.Select }
 
 cmp.setup({
   snippet = {
@@ -26,12 +26,12 @@ cmp.setup({
     ['<Tab>'] = function(fallback)
       if cmp.visible() then
         cmp.select_next_item()
-      elseif luasnip.expand_or_locally_jumpable() then
-        luasnip.expand_or_jump()
-      elseif not check_back_space() then
-        cmp.complete()
+      elseif luasnip.jumpable(1) then
+        luasnip.jump(1)
+      -- elseif not check_back_space() then
+      --   cmp.complete()
       else
-        vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Tab>", true, false, true), "n", false)
+        fallback()
       end
     end,
     ['<S-Tab>'] = function(fallback)

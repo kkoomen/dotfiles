@@ -23,17 +23,18 @@ vim.keymap.set("n", "<leader>f", "<Plug>(coc-format-selected)", { silent = true 
 -- no select by setting `"suggest.noselect": true` in your configuration file
 -- NOTE: Use command ':verbose imap <tab>' to make sure Tab is not mapped by
 -- other plugins before putting this into your config
-local opts = {silent = true, noremap = true, expr = true, replace_keycodes = false}
+local opts = { silent = true, noremap = true, expr = true, replace_keycodes = false }
+
 function _G.check_back_space()
   local col = vim.fn.col('.') - 1
   return col == 0 or vim.fn.getline('.'):sub(col, col):match('%s') ~= nil
 end
-vim.keymap.set("i", "<TAB>", 'coc#pum#visible() ? coc#pum#next(0) : v:lua.check_back_space() ? "<TAB>" : coc#refresh()', opts)
+
+vim.keymap.set("i", "<TAB>", [[coc#pum#visible() ? coc#pum#next(0) : v:lua.check_back_space() || !coc#pum#visible() ? "<TAB>" : coc#refresh()]], opts)
 vim.keymap.set("i", "<S-TAB>", [[coc#pum#visible() ? coc#pum#prev(1) : "\<C-h>"]], opts)
 
--- Make <CR> to accept selected completion item or notify coc.nvim to format
--- <C-g>u breaks current undo, please make your own choice
-vim.keymap.set("i", "<cr>", [[coc#pum#visible() ? coc#_select_confirm() : "\<C-g>u\<CR>\<c-r>=coc#on_enter()\<CR>"]], opts)
+-- Make CR complete current suggestion
+vim.keymap.set("i", "<CR>", [[coc#pum#visible() ? coc#pum#confirm() : "\<CR>"]], opts)
 
 -- Jump to definition
 vim.keymap.set("n", "gd", "<Plug>(coc-definition)", { silent = true })

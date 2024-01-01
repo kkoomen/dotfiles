@@ -60,6 +60,12 @@ require('packer').startup(function(use)
   -- Align block of contents on specific delimiter
   use 'godlygeek/tabular'
 
+  -- Multicursor
+  use {
+    'mg979/vim-visual-multi',
+    config = function() require('config.plugins.multicursor') end,
+  }
+
   -- Improved paste functionality
   use 'sickill/vim-pasta'
 
