@@ -34,17 +34,18 @@ vim.keymap.set("i", "<TAB>", [[coc#pum#visible() ? coc#pum#next(0) : v:lua.check
 vim.keymap.set("i", "<S-TAB>", [[coc#pum#visible() ? coc#pum#prev(1) : "\<C-h>"]], opts)
 
 -- Make CR complete current suggestion
-vim.keymap.set("i", "<CR>", [[coc#pum#visible() ? coc#pum#confirm() : "\<CR>"]], opts)
+vim.keymap.set("i", "<CR>", [[coc#pum#visible() ? coc#_select_confirm() : "\<CR>"]], opts)
 
 -- Jump to definition
 vim.keymap.set("n", "gd", "<Plug>(coc-definition)", { silent = true })
 
--- Install other extensions
+-- Install language servers
 vim.g.coc_global_extensions = {
   'coc-tsserver',
   'coc-html',
   'coc-css',
   'coc-pyright',
+  'coc-sh',
   'coc-phpls',
   'coc-yaml',
   'coc-json',
@@ -58,5 +59,4 @@ vim.g.coc_global_extensions = {
   'coc-java',
   'coc-rust-analyzer',
   'coc-texlab',
-  'coc-lua',
 }

@@ -12,6 +12,7 @@ end
 
 local packer_bootstrap = ensure_packer()
 
+
 -- Load custom plugins.
 require('packer').startup(function(use)
   -- Package manager
@@ -20,7 +21,7 @@ require('packer').startup(function(use)
   -- Colorscheme
   use 'sainnhe/everforest'
 
-  -- Coc language servers
+  -- Language servers
   use {
     'neoclide/coc.nvim',
     branch = 'master',
@@ -69,9 +70,6 @@ require('packer').startup(function(use)
   -- Improved paste functionality
   use 'sickill/vim-pasta'
 
-  -- Quickly modify surrounding parenthesis/brackets
-  use 'tpope/vim-surround'
-
   -- Move lines and blocks of code
   use {
     'fedepujol/move.nvim',
@@ -97,12 +95,13 @@ require('packer').startup(function(use)
 
   -- Snippets
   use 'hrsh7th/nvim-cmp'
+  use 'hrsh7th/cmp-buffer'
+  use 'hrsh7th/cmp-path'
   use 'saadparwaiz1/cmp_luasnip'
   use 'rafamadriz/friendly-snippets'
   use {
     'L3MON4D3/LuaSnip',
-    after = 'nvim-cmp',
-    config = function() require('config.plugins.luasnip') end,
+    config = function() require('config.plugins.snippets') end,
   }
 
   -- Multilingual code parser
@@ -117,22 +116,26 @@ require('packer').startup(function(use)
 
   -- Auto-insert parentheses and brackets
   use {
-    'windwp/nvim-autopairs',
-    config = function() require('nvim-autopairs').setup {} end,
+    'echasnovski/mini.pairs',
+    config = function() require('config.plugins.minipairs') end,
+  }
+
+  -- Adjust the `commentstring` for certain filetypes,
+  -- useful for markdown or vue files.
+  use 'JoosepAlviste/nvim-ts-context-commentstring'
+
+  -- Quickly modify surrounding parenthesis/brackets
+  use {
+    'echasnovski/mini.surround',
+    config = function() require('mini.surround').setup {} end
   }
 
   -- Comment lines and code blocks
   use {
-    'numToStr/Comment.nvim',
+    'echasnovski/mini.comment',
     config = function()
-      require('Comment').setup {
-        mappings = {
-          basic = false,
-          extra = false,
-        },
-      }
       require('config.plugins.comment')
-    end,
+    end
   }
 
   -- File explorer and searcher
@@ -144,12 +147,24 @@ require('packer').startup(function(use)
       require('config.plugins.telescope')
     end
   }
+  use {
+    'nvim-telescope/telescope-fzf-native.nvim',
+    run = 'make',
+    config = function()
+      require('telescope').load_extension('fzf')
+    end
+
+  }
 
   -- Statusline and bufline
   use {
     'nvim-lualine/lualine.nvim',
-    requires = { 'nvim-tree/nvim-web-devicons', opt = true },
     config = function() require('config.plugins.lualine') end,
+  }
+
+  use {
+    'lewis6991/gitsigns.nvim',
+    config = function() require('config.plugins.gitsigns') end,
   }
 
   -- Automatically set up your configuration after cloning packer.nvim
