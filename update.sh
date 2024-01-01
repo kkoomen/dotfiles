@@ -26,6 +26,7 @@ FILES=(
 
   # .vimrc
   .config/nvim/init.lua
+  .config/nvim/coc-settings.json
   .config/nvim/lua/
 )
 
