@@ -13,6 +13,9 @@ vim.o.guicursor = 'n-v-c:block-Cursor'                    -- set gui cursor to b
 vim.opt.list = true                                       -- enable listchars
 vim.api.nvim_set_option('listchars', 'tab:│ ,trail:•')
 
+-- Make our custom aliases available within a non-interactive vim.
+vim.env.BASH_ENV = '~/.bash_aliases'
+
 -- Undo history
 vim.opt.undofile = true                                   -- Save undo's after file closes.
 vim.opt.undodir = '~/.vim/undo,/tmp'                      -- Where to save undo histories.
