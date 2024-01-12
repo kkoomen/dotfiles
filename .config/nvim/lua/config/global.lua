@@ -10,6 +10,7 @@ vim.opt.scrolloff = 4                                     -- scroll offset
 vim.opt.clipboard = 'unnamed'                             -- use system clipboard
 vim.opt.foldmethod = 'marker'                             -- set folding marker
 vim.o.guicursor = 'n-v-c:block-Cursor'                    -- set gui cursor to block
+vim.opt.wrap = false                                      -- disable line wrapping
 vim.opt.list = true                                       -- enable listchars
 vim.api.nvim_set_option('listchars', 'tab:│ ,trail:•')
 

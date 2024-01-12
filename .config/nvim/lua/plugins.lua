@@ -156,6 +156,9 @@ require('packer').startup(function(use)
 
   }
 
+  -- Additional filetype icons
+  use 'nvim-tree/nvim-web-devicons'
+
   -- Statusline and bufline
   use {
     'nvim-lualine/lualine.nvim',

@@ -66,7 +66,7 @@ end
 
 require('lualine').setup {
   options = {
-    icons_enabled = false
+    icons_enabled = true
   },
   tabline = {
     lualine_a = {
@@ -80,18 +80,6 @@ require('lualine').setup {
     },
   },
   sections = {
-    lualine_b = {
-      {
-        'branch',
-        fmt = function(str)
-          if #str > 0 then
-            return ' ' .. str
-          end
-
-          return str
-        end,
-      }
-    },
     lualine_c = {
       statusline_readonly,
       statusline_filename,
