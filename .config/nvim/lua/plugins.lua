@@ -93,15 +93,37 @@ require('packer').startup(function(use)
     config = function() require('textcase').setup { prefix = 'cc' } end
   }
 
-  -- Snippets
+  -- GitHub Copilot
+  use {
+    'zbirenbaum/copilot.lua',
+    cmd = 'Copilot',
+    event = 'InsertEnter',
+    config = function()
+      require('copilot').setup({
+        -- disable suggestion and panel modules as they might conflict with
+        -- compilot-cmp completions
+        suggestion = { enabled = false },
+        panel = { enabled = false },
+      })
+    end,
+  }
+  use {
+    'zbirenbaum/copilot-cmp',
+    config = function ()
+      require('copilot_cmp').setup()
+    end
+  }
+
+  -- Autocompletion + snippets + icons
   use 'hrsh7th/nvim-cmp'
   use 'hrsh7th/cmp-buffer'
   use 'hrsh7th/cmp-path'
+  use 'onsails/lspkind.nvim'
   use 'saadparwaiz1/cmp_luasnip'
   use 'rafamadriz/friendly-snippets'
   use {
     'L3MON4D3/LuaSnip',
-    config = function() require('config.plugins.snippets') end,
+    config = function() require('config.plugins.completion') end,
   }
 
   -- Multilingual code parser
@@ -127,7 +149,7 @@ require('packer').startup(function(use)
   -- Quickly modify surrounding parenthesis/brackets
   use {
     'echasnovski/mini.surround',
-    config = function() require('mini.surround').setup {} end
+    config = function() require('mini.surround').setup({}) end
   }
 
   -- Comment lines and code blocks
@@ -164,7 +186,6 @@ require('packer').startup(function(use)
     'nvim-lualine/lualine.nvim',
     config = function() require('config.plugins.lualine') end,
   }
-
   use {
     'lewis6991/gitsigns.nvim',
     config = function() require('config.plugins.gitsigns') end,
