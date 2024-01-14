@@ -4,14 +4,13 @@ local ensure_packer = function()
   local install_path = fn.stdpath('data')..'/site/pack/packer/start/packer.nvim'
   if fn.empty(fn.glob(install_path)) > 0 then
     fn.system({'git', 'clone', '--depth', '1', 'https://github.com/wbthomason/packer.nvim', install_path})
-    vim.cmd [[packadd packer.nvim]]
+    vim.cmd('packadd packer.nvim')
     return true
   end
   return false
 end
 
 local packer_bootstrap = ensure_packer()
-
 
 -- Load custom plugins.
 require('packer').startup(function(use)
@@ -21,16 +20,27 @@ require('packer').startup(function(use)
   -- Colorscheme
   use 'sainnhe/everforest'
 
-  -- Language servers
-  use {
-    'neoclide/coc.nvim',
-    branch = 'master',
-    run = 'npm ci',
-    config = function() require('config.plugins.coc') end
-  }
+  -- Lanuage server management
+  use 'williamboman/mason.nvim'
+  use 'williamboman/mason-lspconfig.nvim'
   use {
     'neovim/nvim-lspconfig',
-    config = function() require('config.plugins.lspconfig') end
+    config = function() require('config.plugins.lspconfig') end,
+  }
+
+  -- Autocompletion + snippets + icons
+  use {
+    'hrsh7th/nvim-cmp',
+    requires = {
+      'hrsh7th/cmp-buffer',
+      'hrsh7th/cmp-path',
+      'hrsh7th/cmp-nvim-lsp',
+      'onsails/lspkind.nvim',
+      'saadparwaiz1/cmp_luasnip',
+      'rafamadriz/friendly-snippets',
+      'L3MON4D3/LuaSnip'
+    },
+    config = function() require('config.plugins.completion') end,
   }
 
   -- Documentation generator
@@ -110,20 +120,8 @@ require('packer').startup(function(use)
   use {
     'zbirenbaum/copilot-cmp',
     config = function ()
-      require('copilot_cmp').setup()
+      require('copilot_cmp').setup({})
     end
-  }
-
-  -- Autocompletion + snippets + icons
-  use 'hrsh7th/nvim-cmp'
-  use 'hrsh7th/cmp-buffer'
-  use 'hrsh7th/cmp-path'
-  use 'onsails/lspkind.nvim'
-  use 'saadparwaiz1/cmp_luasnip'
-  use 'rafamadriz/friendly-snippets'
-  use {
-    'L3MON4D3/LuaSnip',
-    config = function() require('config.plugins.completion') end,
   }
 
   -- Multilingual code parser
@@ -156,7 +154,7 @@ require('packer').startup(function(use)
   use {
     'echasnovski/mini.comment',
     config = function()
-      require('config.plugins.comment')
+      require('mini.comment').setup({})
     end
   }
 

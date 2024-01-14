@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+echo "Starting neovim install..."
 wget https://github.com/neovim/neovim/releases/download/stable/nvim-macos.tar.gz
 tar xzvf nvim-macos.tar.gz
 cd nvim-macos
