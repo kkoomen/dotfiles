@@ -20,12 +20,12 @@ require('packer').startup(function(use)
   -- Colorscheme
   use 'sainnhe/everforest'
 
-  -- Lanuage server management
+  -- Language server management
   use 'williamboman/mason.nvim'
   use 'williamboman/mason-lspconfig.nvim'
   use {
     'neovim/nvim-lspconfig',
-    config = function() require('config.plugins.lspconfig') end,
+    config = function() require('config.plugins.lsp') end,
   }
 
   -- Autocompletion + snippets + icons
