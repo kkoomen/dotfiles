@@ -28,6 +28,15 @@ require('packer').startup(function(use)
     config = function() require('config.plugins.lsp') end,
   }
 
+  -- Highlight unused variables
+  use {
+    'zbirenbaum/neodim',
+    event = 'LspAttach',
+    config = function()
+      require("neodim").setup({ alpha = 0.6 })
+    end
+  }
+
   -- Autocompletion + snippets + icons
   use {
     'hrsh7th/nvim-cmp',
@@ -184,9 +193,15 @@ require('packer').startup(function(use)
     'nvim-lualine/lualine.nvim',
     config = function() require('config.plugins.lualine') end,
   }
+
+  -- Git
   use {
     'lewis6991/gitsigns.nvim',
     config = function() require('config.plugins.gitsigns') end,
+  }
+  use {
+    'NeogitOrg/neogit',
+    config = function() require('neogit').setup({}) end,
   }
 
   -- Automatically set up your configuration after cloning packer.nvim
