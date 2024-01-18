@@ -133,6 +133,20 @@ require('packer').startup(function(use)
     end
   }
 
+  -- Git
+  use {
+    'lewis6991/gitsigns.nvim',
+    config = function() require('config.plugins.gitsigns') end,
+  }
+  use {
+    'NeogitOrg/neogit',
+    requires = {
+      'nvim-lua/plenary.nvim',
+      'sindrets/diffview.nvim',
+    },
+    config = function() require('neogit').setup({}) end,
+  }
+
   -- Multilingual code parser
   use({
       'nvim-treesitter/nvim-treesitter',
@@ -192,16 +206,6 @@ require('packer').startup(function(use)
   use {
     'nvim-lualine/lualine.nvim',
     config = function() require('config.plugins.lualine') end,
-  }
-
-  -- Git
-  use {
-    'lewis6991/gitsigns.nvim',
-    config = function() require('config.plugins.gitsigns') end,
-  }
-  use {
-    'NeogitOrg/neogit',
-    config = function() require('neogit').setup({}) end,
   }
 
   -- Automatically set up your configuration after cloning packer.nvim
