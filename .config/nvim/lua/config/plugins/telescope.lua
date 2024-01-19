@@ -29,4 +29,9 @@ telescope.setup({
       find_command = { "rg", "--files", "--follow", "--hidden", "--glob", "!**/.git/*" },
     },
   },
+  extensions = {
+    advanced_git_search = {
+      diff_plugin = 'diffview',
+    }
+  }
 })

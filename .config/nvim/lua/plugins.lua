@@ -33,7 +33,7 @@ require('packer').startup(function(use)
     'zbirenbaum/neodim',
     event = 'LspAttach',
     config = function()
-      require("neodim").setup({ alpha = 0.6 })
+      require('neodim').setup({ alpha = 0.6 })
     end
   }
 
@@ -44,6 +44,7 @@ require('packer').startup(function(use)
       'hrsh7th/cmp-buffer',
       'hrsh7th/cmp-path',
       'hrsh7th/cmp-nvim-lsp',
+      'hrsh7th/cmp-cmdline',
       'onsails/lspkind.nvim',
       'saadparwaiz1/cmp_luasnip',
       'rafamadriz/friendly-snippets',
@@ -185,7 +186,7 @@ require('packer').startup(function(use)
   use {
     'nvim-telescope/telescope.nvim',
     tag = '0.1.5',
-    requires = { {'nvim-lua/plenary.nvim'} },
+    requires = {'nvim-lua/plenary.nvim'},
     config = function()
       require('config.plugins.telescope')
     end
@@ -196,8 +197,17 @@ require('packer').startup(function(use)
     config = function()
       require('telescope').load_extension('fzf')
     end
-
   }
+  -- use {
+  --   'aaronhallaert/advanced-git-search.nvim',
+  --   requires = {
+  --     'nvim-telescope/telescope.nvim',
+  --     'tpope/vim-fugitive',
+  --   },
+  --   config = function ()
+  --     require('telescope').load_extension('advanced_git_search')
+  --   end
+  -- }
 
   -- Additional filetype icons
   use 'nvim-tree/nvim-web-devicons'
