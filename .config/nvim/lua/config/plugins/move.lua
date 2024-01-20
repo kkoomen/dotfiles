@@ -1,4 +1,4 @@
-local opts = { noremap = true, silent = true }
+local opts = { noremap = true, silent = true, nowait = true }
 
 -- Move current line up using CTRL+UP
 vim.keymap.set('n', '<C-Up>', ':MoveLine(-1)<CR>', opts)

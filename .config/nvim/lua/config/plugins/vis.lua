@@ -4,4 +4,5 @@
 -- the selected block instead of the whole line. To do so, every command has to
 -- be prefixed with 'B' which ends up in: '<, '>B [command].
 -- -----------------------------------------------------------------------------
-vim.api.nvim_set_keymap('x', ';', ':B<space>', {})
+local opts = { noremap = true, silent = true, nowait = true }
+vim.keymap.set('x', ';', ':B<space>', opts)

@@ -198,16 +198,6 @@ require('packer').startup(function(use)
       require('telescope').load_extension('fzf')
     end
   }
-  -- use {
-  --   'aaronhallaert/advanced-git-search.nvim',
-  --   requires = {
-  --     'nvim-telescope/telescope.nvim',
-  --     'tpope/vim-fugitive',
-  --   },
-  --   config = function ()
-  --     require('telescope').load_extension('advanced_git_search')
-  --   end
-  -- }
 
   -- Additional filetype icons
   use 'nvim-tree/nvim-web-devicons'
