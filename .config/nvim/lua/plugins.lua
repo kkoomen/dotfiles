@@ -28,6 +28,12 @@ require('packer').startup(function(use)
     config = function() require('config.plugins.lsp') end,
   }
 
+  -- Tags management
+  use {
+    'ludovicchabant/vim-gutentags',
+    config = function() require('config.plugins.gutentags') end,
+  }
+
   -- Highlight unused variables
   use {
     'zbirenbaum/neodim',
