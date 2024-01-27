@@ -170,7 +170,7 @@ vim.api.nvim_create_autocmd('InsertLeave', {
 })
 
 -----------------------------------------------------------
--- Set the completion menu colors based on everforst theme.
+-- Adjust highlight colors based on everforst theme.
 -----------------------------------------------------------
 local configuration = vim.fn['everforest#get_configuration']()
 local palette = vim.fn['everforest#get_palette'](configuration.background, configuration.colors_override)

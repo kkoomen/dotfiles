@@ -32,3 +32,13 @@ telescope.setup({
     },
   },
 })
+
+-----------------------------------------------------------
+-- Adjust highlight colors based on everforst theme.
+-----------------------------------------------------------
+local configuration = vim.fn['everforest#get_configuration']()
+local palette = vim.fn['everforest#get_palette'](configuration.background, configuration.colors_override)
+
+-- Highlights text inside search results, i.e. highlights 'im' in 'imports'
+vim.api.nvim_set_hl(0, 'TelescopeMatching', { fg = palette.aqua[1], bold = true })
+vim.api.nvim_set_hl(0, 'TelescopeSelection', { bg = palette.aqua[1], fg = palette.bg0[1], bold = true })
