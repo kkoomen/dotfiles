@@ -64,15 +64,7 @@ local function statusline_wordcount()
   return 'words:' .. word_count .. ', chars:' .. char_count
 end
 
-local function statusline_gutentags_status()
-  if vim.fn.exists('*gutentags#statusline') == 1 then
-      vim.api.nvim_exec([[
-          return gutentags#statusline('', ':running')
-      ]], false)
-  end
-end
-
-require('lualine').setup {
+require('lualine').setup({
   options = {
     icons_enabled = true
   },
@@ -92,7 +84,6 @@ require('lualine').setup {
       statusline_filename,
     },
     lualine_x = {
-      statusline_gutentags_status,
       statusline_wordcount,
       statusline_indent,
       'encoding',
@@ -112,4 +103,4 @@ require('lualine').setup {
       }
     },
   }
-}
+})

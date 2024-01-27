@@ -55,6 +55,14 @@ for _, server_info in ipairs(servers) do
   lspconfig[server].setup(setup_config)
 end
 
+local function goto_definition()
+  -- Let LSP go to the definition, otherwise fallback on tags.
+  local status, result = pcall(vim.lsp.buf.definition)
+  if not status then
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<C-]>', true, false, true), 'n', true)
+  end
+end
+
 -- Use LspAttach autocommand to only map the following keys
 -- after the language server attaches to the current buffer
 -- See https://github.com/neovim/nvim-lspconfig
@@ -66,7 +74,7 @@ vim.api.nvim_create_autocmd('LspAttach', {
     local opts = { buffer = ev.buf }
     vim.keymap.set('n', 'K', vim.lsp.buf.hover, opts)
     vim.keymap.set('n', 'gD', vim.lsp.buf.declaration, opts)
-    vim.keymap.set('n', 'gd', vim.lsp.buf.definition, opts)
+    vim.keymap.set('n', 'gd', goto_definition, opts)
     vim.keymap.set('n', 'gi', vim.lsp.buf.implementation, opts)
     vim.keymap.set('n', 'gt', vim.lsp.buf.type_definition, opts)
     vim.keymap.set('n', 'gr', vim.lsp.buf.references, opts)
