@@ -182,7 +182,7 @@ vim.api.nvim_set_hl(0, 'CmpNormal', { bg = palette.bg0[1] })
 vim.api.nvim_set_hl(0, 'CmpBorder', { fg = palette.fg[1] })
 
 -- Selected completion menu item
-vim.api.nvim_set_hl(0, 'CmpSel', { bg = palette.aqua[1], fg = palette.bg0[1], bold = true })
+vim.api.nvim_set_hl(0, 'CmpSel', { bg = palette.bg_green[1], bold = true })
 
 -- Highlights text being typed, i.e. highlights 'im' in 'imports'
 vim.api.nvim_set_hl(0, 'CmpItemAbbrMatch', { fg = palette.aqua[1], bold = true })
