@@ -81,7 +81,6 @@ require('lualine').setup {
       {
         'buffers',
         symbols = {
-          modified = ' [+]',
           alternate_file = '',
         },
       }
