@@ -6,7 +6,7 @@ vim.cmd [[command! GutentagsClearCache call system('rm ' . g:gutentags_cache_dir
 
 -- Disable the default project root markers and add our own.
 vim.g.gutentags_add_default_project_roots = 0
-vim.g.gutentags_project_root = {'package.json', '.git'}
+vim.g.gutentags_project_root = {'package.json', '.git', 'Cargo.toml', 'main.py', 'compile_commands.json', 'Makefile'}
 
 -- If set to 1, Gutentags will start generating the tag file when a new project
 -- is open. A new project is considered open when a buffer is created for a file

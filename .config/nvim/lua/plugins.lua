@@ -161,7 +161,7 @@ require('packer').startup(function(use)
         local ts_update = require('nvim-treesitter.install').update({ with_sync = true })
         ts_update()
       end,
-      config = function() require('config.plugins.nvim-treesitter') end,
+      config = function() require('config.plugins.treesitter') end,
     })
 
   -- Auto-insert parentheses and brackets

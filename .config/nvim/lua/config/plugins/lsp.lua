@@ -29,6 +29,7 @@ local servers = {
   { name = 'texlab' },        -- LaTeX
 }
 
+-- Get all the server names.
 local server_names = {}
 for _, server_info in ipairs(servers) do
   table.insert(server_names, server_info.name)
@@ -40,6 +41,7 @@ require('mason-lspconfig').setup({
   automatic_installation = true,
 })
 
+-- Register all the servers.
 local capabilities = require('cmp_nvim_lsp').default_capabilities()
 for _, server_info in ipairs(servers) do
   local server = server_info.name

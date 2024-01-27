@@ -1,4 +1,4 @@
-require('nvim-treesitter.configs').setup {
+require('nvim-treesitter.configs').setup({
   highlight = { enable = true },
   indent = { enable = true },
   ensure_installed = {
@@ -37,4 +37,4 @@ require('nvim-treesitter.configs').setup {
     enable_close_on_slash = true,
     filetypes = { "html" , "xml" },
   }
-}
+})

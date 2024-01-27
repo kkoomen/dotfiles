@@ -7,11 +7,36 @@ local luasnip = require('luasnip')
 
 local select_opts = { behavior = cmp.SelectBehavior.Select }
 
+local function border(hl_name)
+  return {
+    { '╭', hl_name },
+    { '─', hl_name },
+    { '╮', hl_name },
+    { '│', hl_name },
+    { '╯', hl_name },
+    { '─', hl_name },
+    { '╰', hl_name },
+    { '│', hl_name },
+  }
+end
+
 cmp.setup({
   snippet = {
     expand = function(args)
       luasnip.lsp_expand(args.body)
     end,
+  },
+
+  window = {
+    completion = {
+      side_padding = 0,
+      winhighlight = 'Normal:CmpPmenu,CursorLine:CmpSel,Search:None',
+      border = border('CmpBorder'),
+    },
+    documentation = {
+      winhighlight = 'Normal:CmpPmenu,CursorLine:CmpSel,Search:None',
+      border = border('CmpBorder'),
+    },
   },
 
   sources = {
@@ -104,11 +129,14 @@ cmp.setup({
 
 -- Set configuration for specific filetype.
 cmp.setup.filetype('gitcommit', {
-  sources = cmp.config.sources({
-    { name = 'git' }, -- You can specify the `git` source if [you were installed it](https://github.com/petertriho/cmp-git).
-  }, {
+  sources = cmp.config.sources(
+    {
+      { name = 'git' }, -- You can specify the `git` source if [you were installed it](https://github.com/petertriho/cmp-git).
+    },
+    {
       { name = 'buffer' },
-    })
+    }
+  )
 })
 
 -- Use buffer source for `/` and `?` (if you enabled `native_menu`, this won't work anymore).
@@ -128,3 +156,34 @@ cmp.setup.cmdline(':', {
       { name = 'cmdline' }
     })
 })
+
+-- Disable jumping after leaving insert mode.
+vim.api.nvim_create_autocmd('InsertLeave', {
+  callback = function()
+    if
+      require('luasnip').session.current_nodes[vim.api.nvim_get_current_buf()]
+      and not require('luasnip').session.jump_active
+    then
+      require('luasnip').unlink_current()
+    end
+  end,
+})
+
+-----------------------------------------------------------
+-- Set the completion menu colors based on everforst theme.
+-----------------------------------------------------------
+local configuration = vim.fn['everforest#get_configuration']()
+local palette = vim.fn['everforest#get_palette'](configuration.background, configuration.colors_override)
+
+-- Completion background color
+vim.api.nvim_set_hl(0, 'CmpNormal', { bg = palette.bg0[1] })
+
+-- Completion border
+vim.api.nvim_set_hl(0, 'CmpBorder', { fg = palette.fg[1] })
+
+-- Selected completion menu item
+vim.api.nvim_set_hl(0, 'CmpSel', { bg = palette.aqua[1], fg = palette.bg0[1], bold = true })
+
+-- Highlights text being typed, i.e. highlights 'im' in 'imports'
+vim.api.nvim_set_hl(0, 'CmpItemAbbrMatch', { fg = palette.aqua[1], bold = true })
+vim.api.nvim_set_hl(0, 'CmpItemAbbrMatchFuzzy', { fg = palette.aqua[1] })
