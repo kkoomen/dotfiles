@@ -5,8 +5,8 @@ case $- in
 esac
 
 # PATH
+eval "$(/opt/homebrew/bin/brew shellenv)"
 export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
-export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH"
 
 export BREW_PREFIX="$(brew --prefix)"
 
@@ -101,10 +101,6 @@ if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
 # -- PATH: MacTex
 export PATH="$(echo /usr/local/texlive/*/bin/universal-darwin):$PATH"
 
-# -- PATH: Python
-export PATH="$(echo $HOME/Library/Python/*/bin):$PATH"
-export PATH="$BREW_PREFIX/opt/python@3/Frameworks/Python.framework/Versions/Current/bin:$PATH"
-
 # -- PATH: PHP
 export PATH="/usr/local/opt/php/bin:$PATH"
 export PATH="/usr/local/opt/php/sbin:$PATH"
@@ -134,3 +130,9 @@ export LC_ALL="en_US.UTF-8"
 
 # GPG
 export GPG_TTY=$(tty)
+
+# Python
+export PYENV_ROOT="$HOME/.pyenv"
+command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+alias brew='env PATH="${PATH//$(pyenv root)\/shims:/}" brew'

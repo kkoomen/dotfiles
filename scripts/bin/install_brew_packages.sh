@@ -85,8 +85,7 @@ apps=(
   # Developement
   yarn
   php
-  python
-  python3
+  pyenv
   ruby
   openssl
   composer

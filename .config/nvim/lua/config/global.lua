@@ -7,6 +7,7 @@ vim.opt.updatetime = 100                                  -- screen update time
 vim.opt.signcolumn = 'yes'                                -- enable sign column
 vim.opt.spelllang = 'en_gb,nl'                            -- spell langs priority
 vim.opt.scrolloff = 4                                     -- scroll offset
+vim.opt.textwidth = 80                                    -- set text width for auto wrapping
 vim.opt.clipboard = 'unnamed'                             -- use system clipboard
 vim.opt.foldmethod = 'marker'                             -- set folding marker
 vim.o.guicursor = 'n-v-c:block-Cursor'                    -- set gui cursor to block
