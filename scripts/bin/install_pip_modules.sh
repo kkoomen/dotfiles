@@ -5,11 +5,12 @@ pip_packages=(
   omnitagger
   yt-dlp
   vim-vint
-  autoflake
-  autopep8
-  pep8
 )
 
 pip3 install "${pip_packages[@]}" --user
+
+# Install v6.x jupyter
+python3 -m pip install "notebook<7"
+
 echo "Installed pip3 modules."
 exit 0

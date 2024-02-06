@@ -85,7 +85,7 @@ apps=(
   # Developement
   yarn
   php
-  pyenv
+  python3
   ruby
   openssl
   composer
@@ -94,7 +94,6 @@ apps=(
   typescript
   gh
   swi-prolog
-  jupyter
 
   # Development: C
   ccls

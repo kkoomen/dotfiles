@@ -5,9 +5,10 @@ case $- in
 esac
 
 # PATH
-eval "$(/opt/homebrew/bin/brew shellenv)"
 export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
 
+# Homebrew
+eval "$(/opt/homebrew/bin/brew shellenv)"
 export BREW_PREFIX="$(brew --prefix)"
 
 # Base variable exporting.
@@ -130,9 +131,3 @@ export LC_ALL="en_US.UTF-8"
 
 # GPG
 export GPG_TTY=$(tty)
-
-# Python
-export PYENV_ROOT="$HOME/.pyenv"
-command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
-eval "$(pyenv init -)"
-alias brew='env PATH="${PATH//$(pyenv root)\/shims:/}" brew'
