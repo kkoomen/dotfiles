@@ -15,11 +15,3 @@ vim.api.nvim_create_autocmd('BufRead', {
   pattern = '*.bash_*',
   command = 'setlocal ft=sh'
 })
-
--- Formatoptions
-vim.api.nvim_create_autocmd('FileType', {
-  pattern = '*',
-  command = 'autocmd FileType * set formatoptions=crql'
-})
-
-

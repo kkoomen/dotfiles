@@ -82,6 +82,9 @@ end
 vim.api.nvim_create_autocmd('LspAttach', {
   group = vim.api.nvim_create_augroup('UserLspConfig', {}),
   callback = function(ev)
+    -- Allow vim native usage of 'gw' and 'gq'
+    vim.bo[ev.buf].formatexpr = nil
+
     -- Buffer local mappings.
     -- See `:help vim.lsp.*` for documentation on any of the below functions
     local opts = { buffer = ev.buf }
