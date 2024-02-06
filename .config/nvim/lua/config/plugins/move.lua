@@ -2,7 +2,7 @@ local opts = { noremap = true, silent = true, nowait = true }
 
 -- Move current line up using CTRL+UP
 vim.keymap.set('n', '<C-Up>', ':MoveLine(-1)<CR>', opts)
---
+
 -- Move current line down using CTRL+DOWN
 vim.keymap.set('n', '<C-Down>', ':MoveLine(1)<CR>', opts)
 
