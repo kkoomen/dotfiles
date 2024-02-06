@@ -1,7 +1,7 @@
 local lspconfig = require('lspconfig')
 
 local servers = {
-  { -- Lua
+  {                           -- Lua
     name = 'lua_ls',
     settings = {
       Lua = {
@@ -15,7 +15,20 @@ local servers = {
   { name = 'tsserver' },      -- TypeScript
   { name = 'html' },          -- HTML
   { name = 'cssls' },         -- CSS
-  { name = 'pyright' },       -- Python
+  {                           -- Python
+    name = 'pylsp',
+    settings = {
+      pylsp = {
+        plugins = {
+          flake8 = {enabled = true},
+          pycodestyle = {enabled = false},
+          pyflakes = {enabled = false},
+          pylint = {enabled = false},
+          mccabe = {enabled = false},
+        },
+      },
+    },
+  },
   { name = 'bashls' },        -- Bash/shell
   { name = 'intelephense' },  -- PHP
   { name = 'yamlls' },        -- YAML
