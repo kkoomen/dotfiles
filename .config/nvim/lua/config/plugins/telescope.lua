@@ -25,6 +25,13 @@ vim.keymap.set('n', '<C-b>', builtin.git_bcommits, opts)
 telescope.setup({
   defaults = {
     vimgrep_arguments = vimgrep_arguments,
+    preview = {
+      timeout = 250,
+
+      -- Not sure why, but 1 or higher freezes nvim
+      filesize_limit = 0.9999,
+
+    },
   },
   pickers = {
     find_files = {

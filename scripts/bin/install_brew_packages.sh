@@ -118,7 +118,7 @@ apps=(
 
   # Compression
   p7zip
-  unrar
+  rar
 )
 
 for app in "${apps[@]}"; do

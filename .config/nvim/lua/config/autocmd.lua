@@ -15,3 +15,9 @@ vim.api.nvim_create_autocmd('BufRead', {
   pattern = '*.bash_*',
   command = 'setlocal ft=sh'
 })
+
+-- Custom python textwidth
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'python',
+  command = 'setlocal textwidth=79',
+})
