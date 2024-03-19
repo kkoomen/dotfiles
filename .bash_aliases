@@ -12,6 +12,7 @@ alias yt-dl='yt-dlp -f ba -x --audio-quality 0 --audio-format mp3 -o "%(title)s.
 alias rsync="rsync -azh --inplace --no-whole-file -P --stats --timeout=120"
 alias gr='rg --column --line-number --no-heading --fixed-strings --ignore-case --follow --hidden --glob "!.git/*" --color "always" --'
 alias nb="jupyter notebook"
+alias flushcache="sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
 
 # Subtitles
 alias getsubs="subliminal --opensubtitles $OPENSUBS_USER $OPENSUBS_PASS download -s -f -l en"

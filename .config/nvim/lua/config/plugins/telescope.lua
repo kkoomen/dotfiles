@@ -30,7 +30,6 @@ telescope.setup({
 
       -- Not sure why, but 1 or higher freezes nvim
       filesize_limit = 0.9999,
-
     },
   },
   pickers = {
