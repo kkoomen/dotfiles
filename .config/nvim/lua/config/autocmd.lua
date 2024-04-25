@@ -21,3 +21,14 @@ vim.api.nvim_create_autocmd('FileType', {
   pattern = 'python',
   command = 'setlocal textwidth=79',
 })
+
+-- If the filetype is unset or it is markdown, add t to formatoptions.
+-- Only in these scenarios we want auto text wrapping.
+vim.api.nvim_create_autocmd('BufEnter', {
+  pattern = '*',
+  callback = function()
+    if vim.bo.filetype == '' or vim.bo.filetype == 'markdown' then
+      vim.opt_local.formatoptions:append('t')
+    end
+  end
+})
