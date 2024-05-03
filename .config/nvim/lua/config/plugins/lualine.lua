@@ -43,6 +43,11 @@ local function statusline_filename()
 end
 
 local function statusline_wordcount()
+  -- Use texcount for latex
+  if vim.bo.ft == 'tex' then
+    return 'texcount:' .. vim.fn.system('cat /tmp/' .. vim.fn.expand('%:p:t') .. '.sum 2> /dev/null'):gsub("^([0-9]+).*", "%1")
+  end
+
   -- Check if the file type is in the specified list
   local allowed_filetypes = {'', 'text', 'markdown', 'tex', 'asciidoc', 'help', 'mail', 'org', 'rst'}
   local ft_index = vim.fn.index(allowed_filetypes, vim.bo.ft)

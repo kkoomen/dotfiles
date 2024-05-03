@@ -13,6 +13,7 @@ end
 local packer_bootstrap = ensure_packer()
 
 -- Load custom plugins.
+-- Installation directory: ~/.local/share/nvim/site/pack/packer/start
 require('packer').startup(function(use)
   -- Package manager
   use 'wbthomason/packer.nvim'
