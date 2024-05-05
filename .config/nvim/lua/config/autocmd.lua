@@ -17,9 +17,14 @@ vim.api.nvim_create_autocmd('BufRead', {
 })
 
 -- Texcount for latex files.
+local texcount_cmd = "call system('texcount -1 -sum=1,1,1,0,0,1,1. -merge -q -nobib ' . expand('%') . ' > /tmp/' . substitute(strpart(expand('%:p'), 1),  '[^a-zA-Z0-9]\\+', '-', 'g') . '.sum' ) | let b:texcount_modified = 1"
+vim.api.nvim_create_autocmd('BufRead', {
+  pattern = '*.tex',
+  command = texcount_cmd
+})
 vim.api.nvim_create_autocmd('BufWritePost', {
   pattern = '*.tex',
-  command = 'call system("texcount -1 -sum=1,1,1,0,0,1,1. -merge -q -nobib " . expand("%:p") . " > /tmp/" . expand("%:p:t") . ".sum") | let b:texcount_modified = 1'
+  command = texcount_cmd
 })
 
 -- Custom python textwidth

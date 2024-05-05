@@ -47,7 +47,7 @@ local function statusline_wordcount()
   if vim.bo.ft == 'tex' then
     if vim.b.texcount == nil or vim.b.texcount_modified == 1 then
       vim.b.texcount_modified = 0
-      vim.b.texcount = vim.fn.system('cat /tmp/' .. vim.fn.expand('%:p:t') .. '.sum 2> /dev/null'):gsub("^([0-9]+).*", "%1")
+      vim.b.texcount = vim.fn.system('cat /tmp/' .. vim.fn.expand('%:p'):sub(2):gsub('[^a-zA-Z0-9]+', '-') .. '.sum 2> /dev/null'):gsub("^([0-9]+).*", "%1")
     end
     return 'texcount:' .. vim.b.texcount
   end
