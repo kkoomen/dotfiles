@@ -17,9 +17,9 @@ vim.api.nvim_create_autocmd('BufRead', {
 })
 
 -- Texcount for latex files.
-vim.api.nvim_create_autocmd('CursorHold', {
+vim.api.nvim_create_autocmd('BufWritePost', {
   pattern = '*.tex',
-  command = 'call system("texcount -1 -sum=1,1,1,0,0,1,1. -merge -q -nobib " . expand("%:p") . " > /tmp/" . expand("%:p:t") . ".sum")'
+  command = 'call system("texcount -1 -sum=1,1,1,0,0,1,1. -merge -q -nobib " . expand("%:p") . " > /tmp/" . expand("%:p:t") . ".sum") | let b:texcount_modified = 1'
 })
 
 -- Custom python textwidth

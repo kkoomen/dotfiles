@@ -45,7 +45,11 @@ end
 local function statusline_wordcount()
   -- Use texcount for latex
   if vim.bo.ft == 'tex' then
-    return 'texcount:' .. vim.fn.system('cat /tmp/' .. vim.fn.expand('%:p:t') .. '.sum 2> /dev/null'):gsub("^([0-9]+).*", "%1")
+    if vim.b.texcount == nil or vim.b.texcount_modified == 1 then
+      vim.b.texcount_modified = 0
+      vim.b.texcount = vim.fn.system('cat /tmp/' .. vim.fn.expand('%:p:t') .. '.sum 2> /dev/null'):gsub("^([0-9]+).*", "%1")
+    end
+    return 'texcount:' .. vim.b.texcount
   end
 
   -- Check if the file type is in the specified list
