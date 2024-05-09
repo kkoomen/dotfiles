@@ -43,15 +43,6 @@ local function statusline_filename()
 end
 
 local function statusline_wordcount()
-  -- Use texcount for latex
-  if vim.bo.ft == 'tex' then
-    if vim.b.texcount == nil or vim.b.texcount_modified == 1 then
-      vim.b.texcount_modified = 0
-      vim.b.texcount = vim.fn.system('cat /tmp/' .. vim.fn.expand('%:p'):sub(2):gsub('[^a-zA-Z0-9]+', '-') .. '.sum 2> /dev/null'):gsub("^([0-9]+).*", "%1")
-    end
-    return 'texcount:' .. vim.b.texcount
-  end
-
   -- Check if the file type is in the specified list
   local allowed_filetypes = {'', 'text', 'markdown', 'tex', 'asciidoc', 'help', 'mail', 'org', 'rst'}
   local ft_index = vim.fn.index(allowed_filetypes, vim.bo.ft)
@@ -70,7 +61,18 @@ local function statusline_wordcount()
   -- Calculate character count
   local char_count = math.max(0, vim.fn.wordcount().chars - 1)
 
-  return 'words:' .. word_count .. ', chars:' .. char_count
+  local result = 'words:' .. word_count .. ', chars:' .. char_count
+
+  -- Use an additionally texcount for latex.
+  if vim.bo.ft == 'tex' then
+    if vim.b.texcount == nil or vim.b.texcount_modified == 1 then
+      vim.b.texcount_modified = 0
+      vim.b.texcount = vim.fn.system('cat /tmp/' .. vim.fn.expand('%:p'):sub(2):gsub('[^a-zA-Z0-9]+', '-') .. '.sum 2> /dev/null'):gsub("^([0-9]+).*", "%1")
+    end
+    result = 'texcount:' .. vim.b.texcount .. ', ' .. result
+  end
+
+  return result
 end
 
 require('lualine').setup({
