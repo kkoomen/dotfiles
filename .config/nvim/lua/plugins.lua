@@ -117,7 +117,7 @@ require('packer').startup(function(use)
   -- Caser
   use {
     'johmsalas/text-case.nvim',
-    config = function() require('textcase').setup { prefix = 'cc' } end
+    config = function() require('textcase').setup {} end
   }
 
   -- GitHub Copilot
