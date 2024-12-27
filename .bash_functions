@@ -86,7 +86,7 @@ function prefix-css {
 }
 
 # Usage: START_TIME END_TIME INPUT_FILE OUTPUT_FILE
-# Example: cut-mp3 00:00:30 00:02:00 input.mp3 output.mp3
+# Example: cut-mp3 input.mp3 output.mp3 00:00:30 00:02:00
 function cut-mp3 {
   ffmpeg -i "$1" -ss "$3" -to "$4" -c copy "${2:-$1}"
 }

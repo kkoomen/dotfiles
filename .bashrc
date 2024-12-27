@@ -50,9 +50,9 @@ export PROMPT_COMMAND="history -a; $PROMPT_COMMAND"
 shopt -s checkwinsize
 
 # Include all the other bash files.
+[[ -f ~/.bash_private ]] && . ~/.bash_private
 [[ -f ~/.bash_aliases ]] && . ~/.bash_aliases
 [[ -f ~/.bash_functions ]] && . ~/.bash_functions
-[[ -f ~/.bash_private ]] && . ~/.bash_private
 [[ -f ~/.fzf.bash ]] && . ~/.fzf.bash
 
 # Completions.
