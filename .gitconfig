@@ -1,6 +1,6 @@
 [user]
 	email = koomen@protonmail.com
-	name = Kim 金可明
+	name = Kim
 	signingkey = 63861BD482F9BBA2
 [alias]
 	cleanup = "!git branch --merged | grep -v '\\*\\|master\\|main\\|develop\\|development\\|uat\\|origin' | xargs -n 1 git branch -D"
