@@ -85,5 +85,6 @@ done
 
 # Remaining permissions
 [[ -f ~/.ssh/id_rsa ]] && chmod 400 ~/.ssh/id_rsa
+[[ ! -f ~/.ssh/config ]] && cp .ssh/config ~/.ssh/
 
 echo "[Setup] done."

@@ -57,3 +57,17 @@ vim.g.markdown_fenced_languages = {
 -- Only highlight the color column when the line is expanding the 80th column.
 vim.cmd('highlight ColorColumn ctermbg=red ctermfg=white guibg=#ea6962 guifg=#252423')
 vim.fn.matchadd('ColorColumn', '\\%81v.', 100)
+
+function MigrateLangWorker()
+  local substitutions = {
+    [[%s/\<\CLangWorkerAPI\>/LangWorker/g]],
+    [[%s/\Clang-worker-api.js/lang-worker.js/g]],
+    [[%s/\CTerra.langWorkerApi/Terra.app.langWorker/g]],
+    [[%s/\<\CcreateLangWorkerApi\>/createLangWorker/g]],
+  }
+
+  for _, cmd in ipairs(substitutions) do
+    pcall(vim.cmd, cmd)
+  end
+end
+vim.api.nvim_create_user_command("MigrateLangWorker", MigrateLangWorker, {})
