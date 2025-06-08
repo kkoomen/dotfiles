@@ -12,6 +12,9 @@ local function statusline_filename()
     return '[No Name]'
   end
 
+  -- Replace path to homedir with ~
+  path = path:gsub(vim.fn.expand('~'), '~')
+
   -- The path should be at most some percent of the total width
   local max_percent_width = 0.3
   local win_width = vim.fn.winwidth(vim.fn.winnr())

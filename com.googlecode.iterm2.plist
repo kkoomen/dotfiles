@@ -924,9 +924,9 @@
 	<key>DimBackgroundWindows</key>
 	<false/>
 	<key>DimInactiveSplitPanes</key>
-	<true/>
+	<false/>
 	<key>DimOnlyText</key>
-	<true/>
+	<false/>
 	<key>DisableFullscreenTransparency</key>
 	<true/>
 	<key>EnableDivisionView</key>
@@ -1102,6 +1102,8 @@ Reset</string>
 			<key>AWDS Window Option</key>
 			<string>No</string>
 			<key>Ambiguous Double Width</key>
+			<false/>
+			<key>Animate Movement</key>
 			<false/>
 			<key>Ansi 0 Color</key>
 			<dict>
@@ -1431,6 +1433,8 @@ Reset</string>
 			<true/>
 			<key>Draw Powerline Glyphs</key>
 			<true/>
+			<key>Faint Text Alpha</key>
+			<real>0.49531249999999999</real>
 			<key>Flashing Bell</key>
 			<false/>
 			<key>Foreground Color</key>
@@ -1503,7 +1507,7 @@ Reset</string>
 			<key>Non-ASCII Ligatures</key>
 			<true/>
 			<key>Normal Font</key>
-			<string>IosevkaNFM-Medium 16</string>
+			<string>ZedMonoNFM-Light 16</string>
 			<key>Only The Default BG Color Uses Transparency</key>
 			<false/>
 			<key>Open Toolbelt</key>
@@ -1548,6 +1552,8 @@ Reset</string>
 			</dict>
 			<key>Send Code When Idle</key>
 			<false/>
+			<key>Set Local Environment Vars</key>
+			<integer>1</integer>
 			<key>Shortcut</key>
 			<string></string>
 			<key>Show Status Bar</key>
@@ -1766,6 +1772,8 @@ Reset</string>
 			<true/>
 			<key>Use Non-ASCII Font</key>
 			<false/>
+			<key>Use Selected Text Color</key>
+			<true/>
 			<key>Use Tab Color</key>
 			<false/>
 			<key>Use Underline Color</key>
@@ -1840,7 +1848,7 @@ Reset</string>
 	<key>SoundForEsc</key>
 	<false/>
 	<key>SplitPaneDimmingAmount</key>
-	<real>0.44455154843494271</real>
+	<real>0.01</real>
 	<key>StatusBarPosition</key>
 	<integer>0</integer>
 	<key>StretchTabsToFillBar</key>
