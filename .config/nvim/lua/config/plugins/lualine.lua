@@ -3,7 +3,7 @@ local function statusline_indent()
 end
 
 local function statusline_readonly()
-  return vim.bo.readonly and '' or ''
+  return vim.bo.readonly and '󰍁' or ''
 end
 
 local function statusline_filename()
@@ -93,6 +93,11 @@ require('lualine').setup({
     },
   },
   sections = {
+    lualine_b = {
+      { 'branch', icon = ''},
+      'diff',
+      'diagnostics'
+    },
     lualine_c = {
       statusline_readonly,
       statusline_filename,
