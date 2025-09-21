@@ -16,7 +16,7 @@ sudo -v
 
 # Set cursor speed.
 defaults write NSGlobalDomain KeyRepeat -int 1
-defaults write NSGlobalDomain InitialKeyRepeat -int 8
+defaults write NSGlobalDomain InitialKeyRepeat -int 20
 echo "[Setting] A really fast keyrepeat is set."
 
 defaults write com.apple.dock wvous-br-corner -int 5
