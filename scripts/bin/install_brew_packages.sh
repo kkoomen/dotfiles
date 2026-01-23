@@ -84,16 +84,16 @@ apps=(
 
   # Developement
   yarn
-  php
+  # php
   python3
-  ruby
+  # ruby
   openssl
   composer
   curlftpfs
-  go
+  # go
   typescript
   gh
-  swi-prolog
+  # swi-prolog
 
   # Development: C
   ccls
