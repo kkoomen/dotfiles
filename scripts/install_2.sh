@@ -10,6 +10,5 @@ bash ~/dotfiles/scripts/bin/install_brew_packages.sh
 
 bash ~/dotfiles/scripts/bin/install_linters.sh
 bash ~/dotfiles/scripts/bin/install_npm_modules.sh
-bash ~/dotfiles/scripts/bin/setup_pyenv.sh
 bash ~/dotfiles/scripts/bin/install_pip_modules.sh
 bash ~/dotfiles/scripts/bin/install_vim_bundles.sh

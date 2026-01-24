@@ -17,7 +17,7 @@ npm_packages=(
   # stylelint
 
   # CSS prefixing
-  autoprefixer-cli
+  # autoprefixer-cli
 )
 
 sudo npm install -g "${npm_packages[@]}"
