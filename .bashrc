@@ -107,6 +107,9 @@ export PATH="$(echo /usr/local/texlive/*/bin/universal-darwin):$PATH"
 export PATH="/usr/local/opt/php/bin:$PATH"
 export PATH="/usr/local/opt/php/sbin:$PATH"
 
+# -- PATH: LibreOffice
+export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
+
 # -- PATH: LLVM
 # Headers can be found with: g++ -E -x c++ - -v < /dev/null
 # and then look for the section: `#include <...> search starts here:`

@@ -1,10 +1,32 @@
 shopt -s expand_aliases
 
 # merge multiple PDF into a single PDF
+# $1: output pdf file
+# $@: input pdf files
 function mergepdf {
   output_file="$1"
   shift
   gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile="$output_file" "$@"
+}
+
+# decrease pdf size with maximum text/image quality
+# $1: input pdf file
+# $2: output pdf file
+function compresspdf {
+  gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 \
+     -dDownsampleColorImages=true \
+     -dDownsampleGrayImages=true \
+     -dDownsampleMonoImages=true \
+     -dColorImageDownsampleType=/Bicubic \
+     -dGrayImageDownsampleType=/Bicubic \
+     -dMonoImageDownsampleType=/Subsample \
+     -dColorImageResolution=300 \
+     -dGrayImageResolution=300 \
+     -dMonoImageResolution=300 \
+     -dColorImageFilter=/DCTEncode \
+     -dGrayImageFilter=/DCTEncode \
+     -dNOPAUSE -dQUIET -dBATCH \
+     -sOutputFile="$2" "$1"
 }
 
 # Example usage:
@@ -66,8 +88,12 @@ function git-branch {
 # Get the current virtual env name
 function get-virtualenv {
   local venv
-  if [[ ! -z "$VIRTUAL_ENV" ]]; then
-    venv=" $(tput setaf 4)($(basename "$VIRTUAL_ENV"))$(tput setaf 7)"
+  if [[ ! -z "$VIRTUAL_ENV" || ! -z "$CONDA_DEFAULT_ENV" ]]; then
+    if [[ ! -z "$CONDA_DEFAULT_ENV" ]]; then
+      venv=" $(tput setaf 4)($CONDA_DEFAULT_ENV)$(tput setaf 7)"
+    else
+      venv=" $(tput setaf 4)($(basename "$VIRTUAL_ENV"))$(tput setaf 7)"
+    fi
   else
     venv=""
   fi
