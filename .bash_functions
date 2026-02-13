@@ -90,9 +90,9 @@ function get-virtualenv {
   local venv
   if [[ ! -z "$VIRTUAL_ENV" || ! -z "$CONDA_DEFAULT_ENV" ]]; then
     if [[ ! -z "$CONDA_DEFAULT_ENV" ]]; then
-      venv=" $(tput setaf 4)($CONDA_DEFAULT_ENV)$(tput setaf 7)"
+      venv=" $(tput setaf 4)(conda:$CONDA_DEFAULT_ENV)$(tput setaf 7)"
     else
-      venv=" $(tput setaf 4)($(basename "$VIRTUAL_ENV"))$(tput setaf 7)"
+      venv=" $(tput setaf 4)(venv:$(basename "$VIRTUAL_ENV"))$(tput setaf 7)"
     fi
   else
     venv=""
