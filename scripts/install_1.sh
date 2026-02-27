@@ -72,6 +72,9 @@ sudo sysctl kern.hostname=$macbook_name
 echo "kern.hostname=$macbook_name" | sudo tee -a /etc/sysctl.conf
 echo "[Setting] Hostname set to ${macbook_name}"
 
+# Disable apps going to sleep when not visible or covered by other apps.
+defaults write NSGlobalDomain NSAppSleepDisabled -bool YES
+
 ###############################################################################
 # Safari                                                                      #
 ###############################################################################
