@@ -55,10 +55,15 @@ shopt -s checkwinsize
 [[ -f ~/.bash_functions ]] && . ~/.bash_functions
 [[ -f ~/.fzf.bash ]] && . ~/.fzf.bash
 
-# Completions.
+# Completions
 [[ -d ~/.completions ]] && . ~/.completions/* > /dev/null 2>&1
 [[ -f /usr/local/etc/bash_completion ]] && . /usr/local/etc/bash_completion > /dev/null 2>&1
 [[ -d /usr/local/etc/bash_completion.d ]] && . /usr/local/etc/bash_completion.d/* > /dev/null 2>&1
+
+# Ngrok autocompletion
+if command -v ngrok &>/dev/null; then
+  eval "$(ngrok completion)"
+fi
 
 # COMPOSER
 export COMPOSER_MEMORY_LIMIT=-1
@@ -74,10 +79,90 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$BREW_PREFIX/opt/nvm/nvm.sh" ] && . "$BREW_PREFIX/opt/nvm/nvm.sh"  # This loads nvm
 [ -s "$BREW_PREFIX/opt/nvm/etc/bash_completion.d/nvm" ] && . "$BREW_PREFIX/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 
+# Shows a shortened current directory (max ~30% terminal width), always keeping
+# the prefix (~ or /), first directory, and last N directories, collapsing the
+# middle with an ellipsis.
+smart_pwd() {
+    local path="${PWD/#$HOME/~}"
+
+    if [[ "$PWD" == "$HOME" ]]; then
+        echo "~"
+        return
+    fi
+
+    local cols="${COLUMNS:-$(tput cols)}"
+    local max_width=$(( cols * 30 / 100 ))
+
+    IFS='/' read -ra parts <<< "$path"
+
+    local prefix=""
+    local start=0
+
+    if [[ "${parts[0]}" == "~" ]]; then
+        prefix="~"
+        start=1
+    else
+        prefix="/"
+        start=1
+    fi
+
+    local first="${parts[start]}"
+    local rest=("${parts[@]:start+1}")
+
+    local out="${prefix}/${first}"
+    out="${out#/}"
+
+    # If nothing else exists
+    if (( ${#rest[@]} == 0 )); then
+        echo "$out"
+        return
+    fi
+
+    # Try adding everything first (no ellipsis unless needed)
+    local full_rest
+    full_rest=$(IFS=/; echo "${rest[*]}")
+    local full_candidate="${out}/${full_rest}"
+
+    if (( ${#full_candidate} <= max_width )); then
+        echo "$full_candidate"
+        return
+    fi
+
+    # Otherwise, greedily add from the end
+    local suffix=()
+    local i
+
+    for (( i=${#rest[@]}-1; i>=0; i-- )); do
+        local test=("${rest[@]:i}")
+
+        local joined
+        joined=$(IFS=/; echo "${test[*]}")
+
+        local candidate="${out}/.../${joined}"
+
+        if (( ${#candidate} <= max_width )); then
+            suffix=("${test[@]}")
+        else
+            break
+        fi
+    done
+
+    # If nothing fits beyond first dir, just show first + last
+    if (( ${#suffix[@]} == 0 )); then
+        echo "$out"
+        return
+    fi
+
+    local suffix_str
+    suffix_str=$(IFS=/; echo "${suffix[*]}")
+
+    echo "${out}/.../${suffix_str}"
+}
+
 # Set PS1 format.
 PS1_ICON=" "
-PS1_NORMAL="$(tput setaf 7)┌─ \w\[$(tput setaf 3)\]\$(git-branch)\[$(tput setaf 7)\]\n└────\$(get-virtualenv)$PS1_ICON "
-PS1_ERROR="$(tput setaf 1)┌─ $(tput setaf 7)\w\[$(tput setaf 3)\]\$(git-branch)\[$(tput setaf 7)\]\n\[$(tput setaf 1)\]└────\$(get-virtualenv)\[$(tput setaf 1)\]$PS1_ICON \[$(tput setaf 7)\]"
+PS1_NORMAL="\$(get-virtualenv)\[\e[38;2;167;162;154m\]\$(smart_pwd)\[\e[0m\]\[$(tput setaf 3)\]\$(git-branch)\[$(tput setaf 7)\] $PS1_ICON "
+PS1_ERROR="\$(get-virtualenv)\$(smart_pwd)\[$(tput setaf 3)\]\$(git-branch)\[$(tput setaf 7)\] \[$(tput setaf 1)\]$PS1_ICON\[$(tput setaf 7)\] "
 export PS1="\$([[ \$? == 0 ]] && echo \"$PS1_NORMAL\" || echo \"$PS1_ERROR\")"
 
 # -- PATH: GOLANG

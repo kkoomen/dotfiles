@@ -9,6 +9,27 @@ function mergepdf {
   gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile="$output_file" "$@"
 }
 
+function discord_ts {
+  local input="$1"
+
+  local minutes=${input%:*}
+  local seconds=${input#*:}
+
+  local offset=$((minutes*60 + seconds))
+  local target=$(( $(date +%s) + offset ))
+
+  local discord="<t:$target:R>"
+
+  local server_time
+  if TZ=Europe/London date -r "$target" >/dev/null 2>&1; then
+    server_time=$(TZ=Europe/London date -r "$target" +%H:%M)
+  else
+    server_time=$(date -r $((target-3600)) +%H:%M)
+  fi
+
+  echo "$server_time ST —  $discord"
+}
+
 # decrease pdf size with maximum text/image quality
 # $1: input pdf file
 # $2: output pdf file
@@ -90,14 +111,14 @@ function get-virtualenv {
   local venv
   if [[ ! -z "$VIRTUAL_ENV" || ! -z "$CONDA_DEFAULT_ENV" ]]; then
     if [[ ! -z "$CONDA_DEFAULT_ENV" ]]; then
-      venv=" $(tput setaf 4)(conda:$CONDA_DEFAULT_ENV)$(tput setaf 7)"
+      venv="$(tput setaf 4)(conda:$CONDA_DEFAULT_ENV)$(tput setaf 7)"
     else
-      venv=" $(tput setaf 4)(venv:$(basename "$VIRTUAL_ENV"))$(tput setaf 7)"
+      venv="$(tput setaf 4)(venv:$(basename "$VIRTUAL_ENV"))$(tput setaf 7)"
     fi
   else
     venv=""
   fi
-  printf "$venv"
+  printf "$venv "
 }
 
 function prefix-css {
