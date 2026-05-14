@@ -79,12 +79,12 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$BREW_PREFIX/opt/nvm/nvm.sh" ] && . "$BREW_PREFIX/opt/nvm/nvm.sh"  # This loads nvm
 [ -s "$BREW_PREFIX/opt/nvm/etc/bash_completion.d/nvm" ] && . "$BREW_PREFIX/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 
-# Shows a shortened current directory (max ~30% terminal width), always keeping
-# the prefix (~ or /), first directory, and last N directories, collapsing the
-# middle with an ellipsis.
+# smart_pwd shortens the current directory to ~30% of terminal width
+# by progressively collapsing path parts from left-to-right into initials.
 smart_pwd() {
     local path="${PWD/#$HOME/~}"
 
+    # Special case: exactly at home
     if [[ "$PWD" == "$HOME" ]]; then
         echo "~"
         return
@@ -95,68 +95,41 @@ smart_pwd() {
 
     IFS='/' read -ra parts <<< "$path"
 
-    local prefix=""
-    local start=0
-
-    if [[ "${parts[0]}" == "~" ]]; then
-        prefix="~"
-        start=1
-    else
-        prefix="/"
-        start=1
-    fi
-
-    local first="${parts[start]}"
-    local rest=("${parts[@]:start+1}")
-
-    local out="${prefix}/${first}"
-    out="${out#/}"
-
-    # If nothing else exists
-    if (( ${#rest[@]} == 0 )); then
-        echo "$out"
+    # If already fits, return immediately
+    if (( ${#path} <= max_width )); then
+        echo "$path"
         return
     fi
 
-    # Try adding everything first (no ellipsis unless needed)
-    local full_rest
-    full_rest=$(IFS=/; echo "${rest[*]}")
-    local full_candidate="${out}/${full_rest}"
-
-    if (( ${#full_candidate} <= max_width )); then
-        echo "$full_candidate"
-        return
-    fi
-
-    # Otherwise, greedily add from the end
-    local suffix=()
     local i
+    local candidate_parts=("${parts[@]}")
 
-    for (( i=${#rest[@]}-1; i>=0; i-- )); do
-        local test=("${rest[@]:i}")
+    # Collapse left-to-right
+    for (( i=1; i<${#candidate_parts[@]}-1; i++ )); do
+        local part="${candidate_parts[i]}"
 
-        local joined
-        joined=$(IFS=/; echo "${test[*]}")
+        # Skip already-short parts
+        if (( ${#part} > 1 )); then
+            candidate_parts[i]="${part:0:1}"
+        fi
 
-        local candidate="${out}/.../${joined}"
+        local candidate
+        candidate=$(IFS=/; echo "${candidate_parts[*]}")
+
+        # Restore leading / if absolute path
+        [[ "$path" == /* ]] && candidate="/$candidate"
 
         if (( ${#candidate} <= max_width )); then
-            suffix=("${test[@]}")
-        else
-            break
+            echo "$candidate"
+            return
         fi
     done
 
-    # If nothing fits beyond first dir, just show first + last
-    if (( ${#suffix[@]} == 0 )); then
-        echo "$out"
-        return
-    fi
+    # Fallback: fully collapsed
+    candidate=$(IFS=/; echo "${candidate_parts[*]}")
+    [[ "$path" == /* ]] && candidate="/$candidate"
 
-    local suffix_str
-    suffix_str=$(IFS=/; echo "${suffix[*]}")
-
-    echo "${out}/.../${suffix_str}"
+    echo "$candidate"
 }
 
 # Set PS1 format.
