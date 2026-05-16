@@ -95,28 +95,48 @@ smart_pwd() {
 
     IFS='/' read -ra parts <<< "$path"
 
-    # If already fits, return immediately
+    # Already fits
     if (( ${#path} <= max_width )); then
         echo "$path"
         return
     fi
 
-    local i
     local candidate_parts=("${parts[@]}")
 
-    # Collapse left-to-right
+    abbreviate_part() {
+        local part="$1"
+
+        # Replace underscores with spaces
+        part="${part//_/ }"
+
+        # Remove non-alphanumeric except spaces
+        part=$(echo "$part" | tr -cd '[:alnum:] ')
+
+        local out=""
+        local word
+
+        for word in $part; do
+            out+="${word:0:1}"
+        done
+
+        echo "$out"
+    }
+
+    local i
+
+    # Collapse left-to-right, excluding final directory
     for (( i=1; i<${#candidate_parts[@]}-1; i++ )); do
         local part="${candidate_parts[i]}"
 
         # Skip already-short parts
         if (( ${#part} > 1 )); then
-            candidate_parts[i]="${part:0:1}"
+            candidate_parts[i]="$(abbreviate_part "$part")"
         fi
 
         local candidate
         candidate=$(IFS=/; echo "${candidate_parts[*]}")
 
-        # Restore leading / if absolute path
+        # Restore leading slash for absolute paths
         [[ "$path" == /* ]] && candidate="/$candidate"
 
         if (( ${#candidate} <= max_width )); then
@@ -125,7 +145,7 @@ smart_pwd() {
         fi
     done
 
-    # Fallback: fully collapsed
+    # Fallback
     candidate=$(IFS=/; echo "${candidate_parts[*]}")
     [[ "$path" == /* ]] && candidate="/$candidate"
 
