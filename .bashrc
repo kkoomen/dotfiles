@@ -91,7 +91,7 @@ smart_pwd() {
     fi
 
     local cols="${COLUMNS:-$(tput cols)}"
-    local max_width=$(( cols * 30 / 100 ))
+    local max_width=$(( cols * 25 / 100 ))
 
     IFS='/' read -ra parts <<< "$path"
 
