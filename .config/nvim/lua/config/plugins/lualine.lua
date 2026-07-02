@@ -103,6 +103,7 @@ require('lualine').setup({
       statusline_filename,
     },
     lualine_x = {
+      'copilot',
       statusline_wordcount,
       statusline_indent,
       'encoding',

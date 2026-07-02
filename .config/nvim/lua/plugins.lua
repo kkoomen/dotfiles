@@ -1,9 +1,9 @@
 -- Ensure package is installed
 local ensure_packer = function()
   local fn = vim.fn
-  local install_path = fn.stdpath('data')..'/site/pack/packer/start/packer.nvim'
+  local install_path = fn.stdpath('data') .. '/site/pack/packer/start/packer.nvim'
   if fn.empty(fn.glob(install_path)) > 0 then
-    fn.system({'git', 'clone', '--depth', '1', 'https://github.com/wbthomason/packer.nvim', install_path})
+    fn.system({ 'git', 'clone', '--depth', '1', 'https://github.com/wbthomason/packer.nvim', install_path })
     vim.cmd('packadd packer.nvim')
     return true
   end
@@ -22,8 +22,8 @@ require('packer').startup(function(use)
   use 'sainnhe/everforest'
 
   -- Language server management
-  use 'williamboman/mason.nvim'
-  use 'williamboman/mason-lspconfig.nvim'
+  use 'mason-org/mason.nvim'
+  use 'mason-org/mason-lspconfig.nvim'
   use {
     'neovim/nvim-lspconfig',
     config = function() require('config.plugins.lsp') end,
@@ -33,15 +33,6 @@ require('packer').startup(function(use)
   use {
     'ludovicchabant/vim-gutentags',
     config = function() require('config.plugins.gutentags') end,
-  }
-
-  -- Highlight unused variables
-  use {
-    'zbirenbaum/neodim',
-    event = 'LspAttach',
-    config = function()
-      require('neodim').setup({ alpha = 0.6 })
-    end
   }
 
   -- Autocompletion + snippets + icons
@@ -136,10 +127,11 @@ require('packer').startup(function(use)
   }
   use {
     'zbirenbaum/copilot-cmp',
-    config = function ()
+    config = function()
       require('copilot_cmp').setup({})
     end
   }
+  use 'AndreM222/copilot-lualine'
 
   -- Git
   use {
@@ -156,14 +148,14 @@ require('packer').startup(function(use)
   }
 
   -- Multilingual code parser
-  use({
-      'nvim-treesitter/nvim-treesitter',
-      run = function()
-        local ts_update = require('nvim-treesitter.install').update({ with_sync = true })
-        ts_update()
-      end,
-      config = function() require('config.plugins.treesitter') end,
-    })
+  use {
+    'neovim-treesitter/nvim-treesitter',
+    run = ':TSUpdate',
+    requires = { 'neovim-treesitter/treesitter-parser-registry' },
+    config = function()
+      require('config.plugins.treesitter')
+    end,
+  }
 
   -- Auto-insert parentheses and brackets
   use {
@@ -193,7 +185,7 @@ require('packer').startup(function(use)
   use {
     'nvim-telescope/telescope.nvim',
     tag = '0.1.5',
-    requires = {'nvim-lua/plenary.nvim'},
+    requires = { 'nvim-lua/plenary.nvim' },
     config = function()
       require('config.plugins.telescope')
     end

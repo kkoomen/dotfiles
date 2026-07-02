@@ -1,72 +1,43 @@
-local lspconfig = require('lspconfig')
+local capabilities = require('cmp_nvim_lsp').default_capabilities()
 
 local servers = {
-  {                           -- Lua
-    name = 'lua_ls',
+  lua_ls = {                  -- Lua
     settings = {
       Lua = {
         diagnostics = {
-          -- Get the language server to recognize the `vim` global
-          globals = {'vim'},
+          globals = { 'vim' },
         },
       },
     },
   },
-  { name = 'tsserver' },      -- TypeScript
-  { name = 'html' },          -- HTML
-  { name = 'cssls' },         -- CSS
-  {                           -- Python
-    name = 'pylsp',
-    settings = {
-      pylsp = {
-        plugins = {
-          flake8 = {enabled = true},
-          pycodestyle = {enabled = false},
-          pyflakes = {enabled = false},
-          pylint = {enabled = false},
-          mccabe = {enabled = false},
-        },
-      },
-    },
-  },
-  { name = 'bashls' },        -- Bash/shell
-  { name = 'intelephense' },  -- PHP
-  { name = 'yamlls' },        -- YAML
-  { name = 'jsonls' },        -- JSON
-  { name = 'vimls' },         -- Vimscript
-  { name = 'ruby_ls' },       -- Ruby
-  { name = 'vls' },           -- Vue
-  { name = 'clangd' },        -- C/C++
-  { name = 'jdtls' },         -- Java
-  { name = 'rust_analyzer' }, -- Rust
-  { name = 'texlab' },        -- LaTeX
-}
 
--- Get all the server names.
-local server_names = {}
-for _, server_info in ipairs(servers) do
-  table.insert(server_names, server_info.name)
-end
+  basedpyright = {},          -- Python
+  ts_ls = {},                 -- TypeScript
+  vuels = {},                 -- Vue.js
+  html = {},                  -- HTML
+  cssls = {},                 -- CSS
+  bashls = {},                -- Bash/shell
+  jsonls = {},                -- JSON
+  yamlls = {},                -- YAML
+  vimls = {},                 -- Vimscript
+  ruby_lsp = {},              -- Ruby
+  clangd = {},                -- C/C++
+  jdtls = {},                 -- Java
+  rust_analyzer = {},         -- Rust
+  texlab = {},                -- LaTeX
+}
 
 require('mason').setup()
 require('mason-lspconfig').setup({
-  ensure_installed = server_names,
-  automatic_installation = true,
+  ensure_installed = vim.tbl_keys(servers),
 })
 
--- Register all the servers.
-local capabilities = require('cmp_nvim_lsp').default_capabilities()
-for _, server_info in ipairs(servers) do
-  local server = server_info.name
-  local settings = server_info.settings
-
-  local setup_config = { capabilities = capabilities }
-  if settings then
-    setup_config.settings = settings
-  end
-
-  lspconfig[server].setup(setup_config)
+for name, config in pairs(servers) do
+  config.capabilities = capabilities
+  vim.lsp.config(name, config)
 end
+
+vim.lsp.enable(vim.tbl_keys(servers))
 
 local function goto_definition()
   -- Let LSP go to the definition, otherwise fallback on tags.

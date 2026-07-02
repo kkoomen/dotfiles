@@ -11,6 +11,9 @@ export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
 eval "$(/opt/homebrew/bin/brew shellenv)"
 export BREW_PREFIX="$(brew --prefix)"
 
+# Ensure miniconda is prepended to the PATH instead of the global brew Python.
+export PATH="/opt/homebrew/Caskroom/miniconda/base/bin:$PATH"
+
 # Base variable exporting.
 export EDITOR=nvim
 export NODE_ENV=development
