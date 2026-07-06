@@ -184,17 +184,16 @@ require('packer').startup(function(use)
   -- File explorer and searcher
   use {
     'nvim-telescope/telescope.nvim',
-    tag = '0.1.5',
-    requires = { 'nvim-lua/plenary.nvim' },
+    version = '*',
+    requires = {
+      'nvim-lua/plenary.nvim',
+      {
+        'nvim-telescope/telescope-fzf-native.nvim',
+        run = 'make',
+      },
+    },
     config = function()
       require('config.plugins.telescope')
-    end
-  }
-  use {
-    'nvim-telescope/telescope-fzf-native.nvim',
-    run = 'make',
-    config = function()
-      require('telescope').load_extension('fzf')
     end
   }
 
