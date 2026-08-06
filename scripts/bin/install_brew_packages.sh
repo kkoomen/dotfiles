@@ -83,16 +83,16 @@ apps=(
   ripgrep
 
   # Developement
-  yarn
-  # php
+  ruby
+  bun
   python3
-  # ruby
   openssl
   composer
   curlftpfs
-  # go
   typescript
   gh
+  # php
+  # go
   # swi-prolog
 
   # Development: C
