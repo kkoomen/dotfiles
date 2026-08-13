@@ -56,7 +56,8 @@ cask_apps=(
   qlvideo
 
   # Fonts
-  font-iosevka
+  # see: https://www.nerdfonts.com/font-downloads
+  font-commit-mono-nerd-font
 )
 
 for app in "${cask_apps[@]}"; do
@@ -84,7 +85,6 @@ apps=(
 
   # Developement
   ruby
-  bun
   python3
   openssl
   composer

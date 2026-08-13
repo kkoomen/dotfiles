@@ -23,9 +23,9 @@
 	<key>AdjustWindowForFontSizeChange</key>
 	<false/>
 	<key>AiMaxTokens</key>
-	<integer>400000</integer>
+	<integer>1050000</integer>
 	<key>AiModel</key>
-	<string>gpt-5.2</string>
+	<string>gpt-5.5</string>
 	<key>AiResponseMaxTokens</key>
 	<integer>128000</integer>
 	<key>AitermURL</key>
@@ -1523,13 +1523,13 @@ Reset</string>
 			<key>Name</key>
 			<string>Default</string>
 			<key>Non Ascii Font</key>
-			<string>ZedMonoNFM 11</string>
+			<string>JetBrainsMonoNerdFontComplete-Regular 14</string>
 			<key>Non-ASCII Anti Aliased</key>
-			<true/>
+			<false/>
 			<key>Non-ASCII Ligatures</key>
-			<true/>
+			<false/>
 			<key>Normal Font</key>
-			<string>ZedMonoNFP 15</string>
+			<string>CommitMonoNF-Regular 15</string>
 			<key>Only The Default BG Color Uses Transparency</key>
 			<false/>
 			<key>Open Toolbelt</key>

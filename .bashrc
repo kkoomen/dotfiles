@@ -14,6 +14,9 @@ export BREW_PREFIX="$(brew --prefix)"
 # Ensure miniconda is prepended to the PATH instead of the global brew Python.
 export PATH="/opt/homebrew/Caskroom/miniconda/base/bin:$PATH"
 
+# Bun
+export PATH="/Users/koomen/.bun/bin:$PATH"
+
 # Base variable exporting.
 export EDITOR=nvim
 export NODE_ENV=development
@@ -229,3 +232,6 @@ export ANTHROPIC_MODEL=deepseek-v4-flash
 export ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-flash
 export ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-flash
 export ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash
+export CLAUDE_CODE_EFFORT_LEVEL=max
+
