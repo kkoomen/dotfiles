@@ -91,6 +91,7 @@ apps=(
   curlftpfs
   typescript
   gh
+  pnpm
   # php
   # go
   # swi-prolog
