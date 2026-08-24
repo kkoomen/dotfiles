@@ -18,6 +18,7 @@
 	l = log --graph --pretty=format:'%C(auto)%h%d %s %C(magenta)%cr %C(white)➜  %C(blue)%an <%ae> %C(green)%GK%C(auto)' --abbrev-commit --date=relative
 	root = rev-parse --show-toplevel
 	first-commit = "!git log --pretty=format:'%h%d ➜  %s (%cr) ➜  %an <%ae>' --reverse --abbrev-commit --date=relative | head -1"
+	lines = "!git ls-files -z | xargs -0 wc -l | tail -n 1 | xargs | cut -d ' ' -f 1"
 [push]
 	default = current
 [core]
@@ -52,3 +53,5 @@
 	insteadOf = https://github.com/
 [rerere]
 	enabled = true
+[includeIf "gitdir:~/tech/banrai/"]
+    path = ~/.gitconfig-banrai
