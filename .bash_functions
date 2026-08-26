@@ -190,7 +190,7 @@ function gl {
     fzf --no-sort --reverse --tiebreak=index --no-multi \
         --ansi \
         --preview="$_viewGitLogLine" \
-        --preview-window 'right,70%' \
+        --preview-window 'right,70%,wrap' \
         --header "enter = view; ctrl-y = copy hash" \
         --bind "enter:execute:$_viewGitLogLine | less -R" \
         --bind "ctrl-y:execute:$_gitLogLineToHash | pbcopy"
