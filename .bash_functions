@@ -186,10 +186,12 @@ function gl {
   local _gitLogLineToHash="echo {} | grep -o '[a-f0-9]\{7\}' | head -1"
   local _viewGitLogLine="$_gitLogLineToHash | xargs -I % sh -c 'git show --color=always % | diff-so-fancy'"
 
-    glNoGraph |
-        fzf --no-sort --reverse --tiebreak=index --no-multi \
-            --ansi --preview="$_viewGitLogLine" \
-                --header "enter to view, alt-y to copy hash" \
-                --bind "enter:execute:$_viewGitLogLine   | less -R" \
-                --bind "alt-y:execute:$_gitLogLineToHash | xclip"
+  glNoGraph |
+    fzf --no-sort --reverse --tiebreak=index --no-multi \
+        --ansi \
+        --preview="$_viewGitLogLine" \
+        --preview-window 'right,70%' \
+        --header "enter = view; ctrl-y = copy hash" \
+        --bind "enter:execute:$_viewGitLogLine | less -R" \
+        --bind "ctrl-y:execute:$_gitLogLineToHash | pbcopy"
 }
