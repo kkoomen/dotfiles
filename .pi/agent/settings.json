@@ -1,0 +1,9 @@
+{
+  "lastChangelogVersion": "0.85.1",
+  "theme": "dark",
+  "defaultProvider": "deepseek",
+  "defaultModel": "deepseek-v4-flash",
+  "defaultThinkingLevel": "low",
+  "defaultProjectTrust": "always",
+  "hideThinkingBlock": true
+}

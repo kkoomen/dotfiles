@@ -222,6 +222,3 @@ export GPG_TTY=$(tty)
 
 # uv
 export PATH="$HOME/.local/bin:$PATH"
-
-# Claude
-export ANTHROPIC_MODEL="claude-sonnet-5"

@@ -28,6 +28,14 @@ FILES=(
   .config/nvim/init.lua
   .config/nvim/coc-settings.json
   .config/nvim/lua/
+
+  .pi/agent/AGENTS.md
+  .pi/agent/settings.json
+  .pi/agent/agents/
+  .pi/agent/skills/grill-me/
+  .pi/agent/extensions/subagent/
+  .pi/agent/extensions/deepseek-balance.ts
+  .pi/agent/extensions/quiet-transcript.ts
 )
 
 # Files that must exist.
@@ -39,6 +47,7 @@ TOUCH_DIRS=(
   .config/mpv/
   .ssh/
   .weechat/
+  .pi/
   Library/KeyBindings/
 )
 
