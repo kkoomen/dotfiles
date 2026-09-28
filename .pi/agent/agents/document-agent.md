@@ -1,7 +1,7 @@
 ---
 name: document-agent
 description: Updates user and maintainer documentation to match verified implemented behavior.
-model: deepseek-v4-flash
+model: deepseek-flash
 handoff: true
 thinking: low
 tools: read, bash, edit, write

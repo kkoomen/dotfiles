@@ -1,7 +1,7 @@
 ---
 name: orchestrator-agent
 description: Classifies roadmap work and coordinates the minimum safe sequence of project-local specialist agents.
-model: deepseek-v4-flash
+model: deepseek-flash
 thinking: low
 tools: read, bash, edit, write, subagent
 ---

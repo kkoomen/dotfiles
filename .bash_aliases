@@ -11,7 +11,6 @@ alias vi="vim"
 alias yt-dl='yt-dlp -f ba -x --audio-quality 0 --audio-format mp3 -o "%(title)s.%(ext)s"'
 alias rsync="rsync -azh --inplace --no-whole-file -P --stats --timeout=120"
 alias gr='rg --column --line-number --no-heading --fixed-strings --ignore-case --follow --hidden --glob "!.git/*" --color "always" --'
-alias nb="pretzel lab"
 alias flushdnscache="sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
 alias texwordcount="texcount -1 -sum=1,1,1,0,0,1,1. -merge -q -nobib"
 

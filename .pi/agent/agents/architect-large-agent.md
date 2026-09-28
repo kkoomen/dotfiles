@@ -1,7 +1,7 @@
 ---
 name: architect-large-agent
 description: Interviews unresolved user-owned decisions and produces detailed roadmap plans for large features.
-model: deepseek-v4-flash
+model: deepseek-flash
 handoff: true
 thinking: max
 tools: read, bash, edit

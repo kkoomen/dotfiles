@@ -222,3 +222,15 @@ export GPG_TTY=$(tty)
 
 # uv
 export PATH="$HOME/.local/bin:$PATH"
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+# Source conda.sh directly instead of forking `conda shell.bash hook`.
+# The subprocess launches Python and imports the whole conda stack (~3s)
+# on every new shell; sourcing this script is effectively instant.
+if [ -f "/opt/homebrew/Caskroom/miniconda/base/etc/profile.d/conda.sh" ]; then
+    . "/opt/homebrew/Caskroom/miniconda/base/etc/profile.d/conda.sh"
+else
+    export PATH="/opt/homebrew/Caskroom/miniconda/base/bin:$PATH"
+fi
+# <<< conda initialize <<<

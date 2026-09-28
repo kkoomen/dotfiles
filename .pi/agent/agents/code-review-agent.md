@@ -1,7 +1,7 @@
 ---
 name: code-review-agent
 description: Independently reviews the complete production and test diff for correctness, risk, scope, and maintainability.
-model: deepseek-v4-flash
+model: deepseek-flash
 handoff: true
 thinking: high
 tools: read, bash

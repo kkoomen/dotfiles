@@ -1,7 +1,7 @@
 ---
 name: formatter-agent
 description: Applies repository-defined formatting and lint checks without changing behavior.
-model: deepseek-v4-flash
+model: deepseek-flash
 handoff: true
 thinking: off
 tools: read, bash, edit
