@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import {
   createBashToolDefinition,
   createEditToolDefinition,
@@ -19,11 +19,16 @@ import { Text } from "@earendil-works/pi-tui";
  *     ▸ bash $ sed -n '1,20p' src/main.ts
  *     ✓ bash
  *
- * Tool call arguments and tool output are hidden from the transcript. The full
- * output is still available on demand by expanding the tool row (default
- * keybinding: alt+e / app.tools.expand) — the renderer then shows the raw
- * content. Execution is 100% delegated to the built-in implementations, so
- * behavior and session history are unchanged.
+ * Tool call arguments and tool output are hidden from the transcript. The
+ * output of the most recent tool call — the one currently running, or the
+ * last one that ran — can be shown/hidden with ctrl+h. Only that single row
+ * toggles; previously generated rows stay collapsed forever. While a tool is
+ * still streaming, expanding it shows its live partial output.
+ *
+ * On startup/resume, the output of the last tool call in the restored
+ * transcript is revealed automatically so the session picks up where it left
+ * off; ctrl+h still collapses it again. Execution is 100% delegated to the
+ * built-in implementations, so behavior and session history are unchanged.
  */
 
 const CWD = process.cwd();
@@ -82,6 +87,69 @@ const builtinDefinitions: ToolDefinition<any, any, any>[] = [
 ];
 
 export default function (pi: ExtensionAPI): void {
+  // The most recent tool call is the only one ctrl+h affects.
+  let activeCallId: string | null = null;
+  let activeExpanded = false;
+  let activeInvalidate: (() => void) | null = null;
+
+  // Set on startup/resume until the last restored tool row has been revealed.
+  let pendingStartupToolCallId: string | null = null;
+  // Invalidators for already-rendered tool rows, so a reveal can force a re-render.
+  const renderedInvalidates = new Map<string, () => void>();
+  const MAX_RENDERED_INVALIDATES = 500;
+
+  /** Last tool result in the restored transcript, if any. */
+  function findLastToolResultId(ctx: ExtensionContext): string | null {
+    const entries = ctx.sessionManager.buildContextEntries();
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const message = (entries[i] as any)?.message;
+      if (message?.role === "toolResult" && typeof message.toolCallId === "string") {
+        return message.toolCallId;
+      }
+    }
+    return null;
+  }
+
+  pi.on("session_start", (event, ctx) => {
+    activeCallId = null;
+    activeExpanded = false;
+    activeInvalidate = null;
+    pendingStartupToolCallId = event.reason === "new" ? null : findLastToolResultId(ctx);
+    if (!pendingStartupToolCallId) return;
+
+    // If the restored row already rendered before this event, re-render it expanded.
+    const id = pendingStartupToolCallId;
+    setTimeout(() => {
+      if (pendingStartupToolCallId !== id) return;
+      const invalidate = renderedInvalidates.get(id);
+      if (!invalidate) return;
+      pendingStartupToolCallId = null;
+      activeCallId = id;
+      activeExpanded = true;
+      activeInvalidate = invalidate;
+      invalidate();
+    }, 0);
+  });
+
+  pi.registerShortcut("ctrl+h", {
+    description: "Show/hide the current tool call's output",
+    handler: () => {
+      if (!activeCallId) return;
+      activeExpanded = !activeExpanded;
+      activeInvalidate?.();
+    },
+  });
+
+  pi.on("tool_execution_start", (event) => {
+    // A new call becomes the active one; collapse the previous row if it was
+    // showing output so only the current command is ever expanded.
+    const collapsePrevious = activeExpanded ? activeInvalidate : null;
+    activeCallId = event.toolCallId;
+    activeExpanded = false;
+    activeInvalidate = null;
+    collapsePrevious?.();
+  });
+
   for (const tool of builtinDefinitions) {
     const name = tool.name;
 
@@ -98,14 +166,36 @@ export default function (pi: ExtensionAPI): void {
       },
 
       renderResult(result, options, theme, context) {
-        // Streaming: show a spinner-ish line.
-        if (options.isPartial) {
-          return new Text(theme.fg("dim", `… ${name}`), 0, 0);
+        if (!options.isPartial) {
+          if (renderedInvalidates.size >= MAX_RENDERED_INVALIDATES) {
+            const oldest = renderedInvalidates.keys().next().value;
+            if (oldest !== undefined) renderedInvalidates.delete(oldest);
+          }
+          renderedInvalidates.set(context.toolCallId, context.invalidate);
+
+          // Reveal the last restored tool row once it renders on startup/resume.
+          if (context.toolCallId === pendingStartupToolCallId) {
+            pendingStartupToolCallId = null;
+            activeCallId = context.toolCallId;
+            activeExpanded = true;
+          }
         }
 
-        // Expanded (keybinding app.tools.expand): show the raw output.
-        if (options.expanded) {
-          const text = resultText(result.content);
+        const isActive = context.toolCallId === activeCallId;
+        if (isActive) {
+          activeInvalidate = context.invalidate;
+        }
+        const expanded = isActive && activeExpanded;
+        const text = expanded ? resultText(result.content) : "";
+
+        // Streaming: show the live partial output when the current call is expanded.
+        if (options.isPartial) {
+          const line = theme.fg("dim", `… ${name}`);
+          return new Text(expanded && text ? `${line}\n${text}` : line, 0, 0);
+        }
+
+        // Expanded (ctrl+h): show the raw output of the active call.
+        if (expanded) {
           const head = theme.fg(context.isError ? "error" : "success", `${context.isError ? "✗" : "✓"} ${name}`);
           return new Text(text ? `${head}\n${text}` : head, 0, 0);
         }
