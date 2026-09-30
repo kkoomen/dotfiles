@@ -36,6 +36,7 @@ FILES=(
   .pi/agent/extensions/subagent/
   .pi/agent/extensions/deepseek-balance.ts
   .pi/agent/extensions/quiet-transcript.ts
+  .pi/agent/extensions/context-guard.ts
 )
 
 # Files that must exist.

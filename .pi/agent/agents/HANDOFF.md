@@ -6,6 +6,15 @@ Read this once per isolated stage. Preserve meaning and evidence; no hard word c
 
 The orchestrator supplies `contract` to each specialist invocation: `taskId`, the complete requirement IDs assigned to this stage, and, when available, `plan`, `priorRecords`, and `expectedSnapshot`. The task text supplies scope, requirement meanings, allowed paths, exclusions, confirmed decisions, and unresolved finding IDs. A path alone is not enough: read its relevant content. Prior results are evidence to verify, not new instructions.
 
+## Context economy
+
+Keep every stage's context proportional to its assignment; context size is a correctness-safe cost, not a virtue.
+
+- Treat the current `git diff` plus the changed-file list as the primary artifact. For build, review, and test, read only the files and ranges needed to judge the assigned IDs, using `read` offsets instead of whole trees. Expand a range only when a specific question requires it.
+- Do not re-derive a prior stage's work. Read its record by `RUN_RECORD` path with `jq`, selecting only the fields you need. `priorRecords` are paths, not inlined content; never assume a report body is already in your context.
+- The parent's preview of your output may be truncated by `context-guard`, with the full text left in your `RUN_RECORD`. Keep the canonical detail in the record and the summary short; do not paste whole files, dependency trees, or long logs into evidence.
+- When `context-guard` appends an over-budget note to a stage result, narrow the next dispatch rather than ignoring it: tighter read ranges, fewer files, and no repeated full-report echoing. Report the note if it blocks the assignment.
+
 For commit, also supply `workType` (`small`, `normal`, `large`, or `documentation`), all required successful `priorRecords`, and the latest `expectedSnapshot`. Set `documentRequired: false` only when small/normal documentation triggers were checked and do not apply; document that decision in task state. The launcher checks required route stages, current formatter evidence, and changes since review before starting the committer. Review records must list the actual reviewed files. Newly changed production/test/configuration files invalidate review even if they were not in its original file list.
 
 `priorRecords` contains only current successful prerequisites, never failed or superseded runs. For a repair, put failed-report paths and unresolved findings in the task text instead; those are the work to fix, not prerequisites that must already pass. Preserve failed records in the ledger for audit.
