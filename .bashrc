@@ -234,3 +234,6 @@ else
     export PATH="/opt/homebrew/Caskroom/miniconda/base/bin:$PATH"
 fi
 # <<< conda initialize <<<
+#
+# Google Cloud
+export PATH=/opt/homebrew/share/google-cloud-sdk/bin:"$PATH"
