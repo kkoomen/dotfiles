@@ -1,7 +1,6 @@
 ---
 name: test-agent
 description: Independently evaluates test design for large or explicitly assigned work and adds only missing, valuable coverage.
-model: deepseek-flash
 handoff: true
 thinking: high
 tools: read, bash, edit, write

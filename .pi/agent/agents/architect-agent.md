@@ -1,7 +1,6 @@
 ---
 name: architect-agent
 description: Produces concise implementation plans for normal features with settled requirements.
-model: deepseek-flash
 handoff: true
 thinking: high
 tools: read, bash

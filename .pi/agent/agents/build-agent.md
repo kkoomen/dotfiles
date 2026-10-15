@@ -1,7 +1,6 @@
 ---
 name: build-agent
 description: Implements an assigned fix or approved feature plan, including focused tests and relevant validation.
-model: deepseek-flash
 handoff: true
 thinking: high
 tools: read, bash, edit, write

@@ -1,7 +1,6 @@
 ---
 name: commit-agent
 description: Creates one focused commit after every stage required by the selected route has passed.
-model: deepseek-flash
 handoff: true
 thinking: low
 tools: read, bash
