@@ -11,19 +11,24 @@
 - Opt-out is explicit and per request. Bypass routing only when the user says so directly, for example "don't route it through the orchestrator", "just do it directly", or "no orchestrator". A tiny-looking diff, a long description, a user-authored plan, or silence is not an opt-out.
 - The cost is one extra dispatch and its latency on trivial edits. Accept it: consistent classification, evidence, and status are worth more than saving a round trip on a one-line change.
 - Inside a routed task, the orchestrator's route and evidence rules govern. If scope grows past the chosen route, reclassify; never keep a cheaper route to save time.
+- **Only plans need your confirmation.** Every architect plan is presented to the user and held until they explicitly approve it, before the first implementation stage. Nothing else is gated: quarantine, cost and failure reports, follow-up routes, reclassification, and repairs are reported as they happen and proceed without waiting for a reply.
+- **Relay a suspended orchestrator verbatim and wait.** The orchestrator runs as one subagent turn, so it cannot wait for you. It ends its turn with one of `AWAITING PLAN APPROVAL`, `AWAITING INTERVIEW ANSWER`, or `AWAITING DECISION`.
+  - Show the user the payload unchanged. Do not summarize the question, answer it yourself, or approve on their behalf.
+  - On a reply, re-invoke the same agent with the same task ID, its `.pi/state/<taskId>.json` path, the user's reply verbatim, and an instruction to read that state before continuing.
+  - Silence, an unrelated reply, or a restatement of the original request is not approval; re-invoke and ask again.
 
 # Wave and Dependency Rules
 
 A wave is one orchestrator route that runs independent roadmap items concurrently. It is not permission for the main thread or a specialist to work outside its item.
 
-- Wave entry needs two or more ready roadmap items, a pruned dependency DAG with at least two layers, and disjoint deployables or workspaces.
+- Wave entry needs two or more ready roadmap items whose acceptance criteria are settled, an acyclic dependency graph, and a build boundary that needs no item's unmerged output. A fully independent set is the best wave candidate, not a disqualification. The authoritative step order and per-step rules live in `~/.pi/agent/agents/WAVE.md`; this section states only the invariants.
 - Classify every dependency edge before ordering items. Never assume roadmap items have a total order.
   - `contract`: one item consumes an interface, schema, event, or file format another defines. Blocks the consuming item's build unless the interface is frozen first; always blocks its commit.
   - `runtime`: product or deployment order only. Blocks neither build nor commit.
-  - `collision`: both items touch the same file, hub module (route registry, barrel export, shared types, lockfile), even when logically independent. Forbids both items sharing one wave: they must be split into separate items or routed separately, and the edge orders their assembly once split. Does not block commit.
+  - `collision`: both items touch the same file, hub module (route registry, barrel export, shared types, lockfile), even when logically independent. Forbids both items sharing one wave: they must be split into separate items or routed separately, and the edge orders their assembly once split. Does not block commit. The file-level check is decisive: if the wave-entry build-boundary test and this check disagree, two items touching the same file do not have a build boundary between them.
   - `evidence`: shared verification surface, baseline, or test infrastructure. Build may proceed in parallel; verification and commit are serial.
 - Prune edges that are not real before assigning layers. Record every pruned edge and its reason.
-- One worktree per item, one review per item, one commit per item. A wave never combines items into one commit or one review. The single exception is a post-assembly follow-up: it lands as one follow-up commit on `followup/<itemId>` (or `assembly-fix/<itemId>` for an assembly conflict), assembled by the orchestrator, followed by a re-run integration review; a wave with an open follow-up is not reported ready.
+- One worktree per item, one review per item, one commit per item. A wave never combines items into one commit, and the cross-item integration review never replaces or satisfies a per-item review. The single exception is a post-assembly follow-up: it lands as one follow-up commit on `followup/<itemId>` (or `assembly-fix/<itemId>` for an assembly conflict), assembled by the orchestrator, followed by a re-run integration review; a wave with an open follow-up is not reported ready.
 - Files a repository hook regenerates on every commit, such as the git-cliff `CHANGELOG.md`, are mandatory shared artifacts: the planner must list them, and they are excluded from the one-item-files rule.
 - Wave coordination state lives in `.pi/state/<waveId>.json` and is never committed.
 

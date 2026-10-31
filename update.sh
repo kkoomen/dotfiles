@@ -33,6 +33,9 @@ FILES=(
   .pi/agent/settings.json
   .pi/agent/agents/
   .pi/agent/skills/grill-me/
+  .pi/agent/skills/diff-tracker/
+  .pi/agent/skills/pi-context-mode/
+  .pi/agent/prompts/
   .pi/agent/extensions/subagent/
   .pi/agent/extensions/deepseek-balance.ts
   .pi/agent/extensions/quiet-transcript.ts

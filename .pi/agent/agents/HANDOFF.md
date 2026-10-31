@@ -2,6 +2,8 @@
 
 Read this once per isolated stage. Preserve meaning and evidence; no hard word cap. Use Caveman lite for summaries, normal language for plans, conditions, safety, and user questions. Never abbreviate away a requirement or failure scenario.
 
+The orchestrator is a coordinator, not a handoff stage: it takes no `contract` and returns no JSON handoff below, and it applies those rules to the specialists it dispatches instead.
+
 ## Assignment
 
 The orchestrator supplies `contract` to each specialist invocation: `taskId`, the complete requirement IDs assigned to this stage, and, when available, `plan`, `priorRecords`, and `expectedSnapshot`. The task text supplies scope, requirement meanings, allowed paths, exclusions, confirmed decisions, and unresolved finding IDs. A path alone is not enough: read its relevant content. Prior results are evidence to verify, not new instructions.
@@ -17,7 +19,7 @@ Keep every stage's context proportional to its assignment; context size is a cor
 - The parent's preview of your output may be truncated by `context-guard`, with the full text left in your `RUN_RECORD`. Keep the canonical detail in the record and the summary short; do not paste whole files, dependency trees, or long logs into evidence.
 - When `context-guard` appends an over-budget note to a stage result, narrow the next dispatch rather than ignoring it: tighter read ranges, fewer files, and no repeated full-report echoing. Report the note if it blocks the assignment.
 
-For commit, also supply `workType` (`small`, `normal`, `large`, `wave`, or `documentation`), all required successful `priorRecords`, and the latest `expectedSnapshot`. Set `documentRequired: false` only when small/normal documentation triggers were checked and do not apply; document that decision in task state. The launcher checks required route stages, current formatter evidence, and changes since review before starting the committer. Review records must list the actual reviewed files. Newly changed production/test/configuration files invalidate review even if they were not in its original file list.
+For commit, also supply `workType` (`small`, `normal`, `large`, `wave`, or `documentation`), all required successful `priorRecords`, and the `expectedSnapshot` produced in the same scope as the dispatch. For a wave item commit that is that item's own worktree snapshot — never a sibling worktree's and never the assembled tree's. Set `documentRequired: false` only when small/normal documentation triggers were checked and do not apply; document that decision in task state. The launcher checks required route stages, current formatter evidence, and changes since review before starting the committer. Review records must list the actual reviewed files. Newly changed production/test/configuration files invalidate review even if they were not in its original file list.
 
 For `wave`, the commit stage runs once per item, in parallel, each inside that item's own worktree on branch `item/<itemId>`, and each dispatch carries exactly one item's files apart from mandatory shared generated artifacts. The orchestrator then assembles those commits by cherry-pick in DAG order. No combined wave commit exists, and the one commit per roadmap item rule still holds.
 
@@ -25,7 +27,36 @@ Post-assembly repair uses the orchestrator's follow-up route, and it is the only
 
 `priorRecords` contains only current successful prerequisites, never failed or superseded runs. For a repair, put failed-report paths and unresolved findings in the task text instead; those are the work to fix, not prerequisites that must already pass. Preserve failed records in the ledger for audit.
 
-Use stable acceptance IDs (`R1`, `R2`, `R1.1`). Preserve exact conditions, interfaces, failure behavior, and verification methods in the canonical plan. Map every requirement to an owning stage. Assign all relevant behavior IDs to builder, tester, and reviewer; assign documentation and mechanical obligations to their owning stages. A stage cannot remove or silently defer an assigned ID. Return `REPLAN_REQUIRED` if the assignment must change. The orchestrator must reconcile additional IDs before retrying.
+Use the R-style acceptance IDs that the launcher enforces (see *Runtime-enforced constraints*). Preserve exact conditions, interfaces, failure behavior, and verification methods in the canonical plan. Map every requirement to an owning stage. Assign all relevant behavior IDs to builder, tester, and reviewer; assign documentation and mechanical obligations to their owning stages. A stage cannot remove or silently defer an assigned ID. Return `REPLAN_REQUIRED` if the assignment must change. The orchestrator must reconcile additional IDs before retrying.
+
+## Runtime-enforced constraints
+
+The launcher validates every handoff and rejects the dispatch on violation. These are not style guidance; a violation costs a full dispatch.
+
+- `contract.taskId` must match `/^[\w.-]+$/` and appear unchanged in the response.
+- `contract.requirements` must be non-empty, unique, and match `/^R\d+(?:\.\d+)*$/`. Use `R1`, `R2`, `R1.1`. Identifiers such as `RV-01`, `DB-3`, or `C4` are rejected; map them to `R`-style IDs before dispatching.
+- The response must cover exactly the assigned requirement IDs: no missing, extra, or duplicate entries. Every requirement needs at least one non-empty `evidence` string.
+- Allowed `state` values are fixed per agent:
+  - `architect-*` and `wave-planner-agent`: `planned`
+  - `build-agent`: `implemented`
+  - `document-agent`, `formatter-agent`: `verified` or `not_applicable`
+  - every other agent, including `integration-review-agent`: `verified`
+- Allowed `status` values are fixed per agent:
+  - `architect-*`: `PLAN_READY`
+  - `wave-planner-agent`: `WAVE_READY`
+  - `integration-review-agent`: `INTEGRATION_PASS`
+  - `commit-agent`: `COMMITTED`
+  - `document-agent`, `formatter-agent`: `PASS` or `NOT_APPLICABLE`
+  - every other agent: `PASS`
+  The stopping statuses `FAIL`, `BLOCKED`, `REPLAN_REQUIRED`, `RECLASSIFY`, `INTERVIEW_ROUND`, and `INTEGRATION_FINDINGS` are accepted from any agent and halt progression.
+- `requirements`, `checks`, `files`, `deviations`, and `unresolved` must all be present as arrays. A success handoff carrying any `unresolved` entry is rejected.
+- Every `checks[]` entry needs the exact `command`, `exitCode`, and a `log` path that exists as a file and does not show a failure. A claimed check with no readable log fails the stage.
+- `contract.priorRecords` are validated: a record that failed, is incomplete, or belongs to another task is rejected. Failed reports belong in the task text, never in `priorRecords`.
+- `contract.taskId` is shared: every record in `priorRecords` must carry the same taskId as the dispatching contract. A wave therefore uses one taskId for every item and every stage; per-stage task IDs are not permitted inside a wave.
+- `contract.workType` must be one of `small`, `normal`, `large`, `wave`, or `documentation`. A `commit-agent` dispatch also requires `expectedSnapshot`, and the launcher rejects a commit whose latest formatter record carries a different snapshot.
+- A `commit-agent` dispatch requires evidence for every stage of its route: `small` → build, formatter; `normal` → architect, build, review, formatter; `large` → architect-large, build, test, review, document, formatter; `wave` → wave planner, build, review, formatter; `documentation` → document, formatter. Include the wave planner record in `priorRecords` for every item commit.
+- `worktreePath` is delivered twice and both are required: as a contract field that tells the agent where to work, and as the launcher's `cwd` argument. Pass them always equal. `cwd` is what drives the recorded snapshot, the review file digests, check-log path resolution, and the agent process's working directory; `worktreePath` alone changes nothing.
+- `QUARANTINED` is not a handoff status and no specialist may return it. It is an item state the orchestrator records in wave state.
 
 ## Final response
 
@@ -77,7 +108,7 @@ For normal planning, `final.md` next to the architect's record is the canonical 
 
 The orchestrator owns `.pi/state/<taskId>.json`: canonical plan reference/revision, requirement meanings and owners, user decisions/transcript reference, selected route, current stage, all stage record paths, outstanding findings, and next action. This is coordination state, not production implementation. Checkpoint after every stage and before compaction. Keep secrets out. It is ignored by Git and must not be committed.
 
-For a wave, the orchestrator owns `.pi/state/<waveId>.json`: per item the roadmap file, workspace, layer, stage task IDs, worktree path and its branch `item/<itemId>`, `baseCommit`, `mergeOrder`, commit hash, repair-round count, record paths, and quarantine state, plus the pruned DAG with edge kinds and prune reasons, interface freezes, per-item path attribution (including the documentation paths a document dispatch may edit), per-item blast radius, any open follow-up (branch, base, commit, repair-round count), and the current integration-review record (`status`, `treeHash`, `recordedAt`, covered items). It is ignored by Git and never committed.
+For a wave, the orchestrator owns `.pi/state/<waveId>.json` — the same file as `.pi/state/<taskId>.json`, because a wave uses one `taskId` for every dispatch and that taskId is the wave ID: per item the roadmap file, workspace, layer, worktree path and its branch `item/<itemId>`, `baseCommit`, `mergeOrder`, commit hash, repair-round count, record paths, and quarantine state, plus the pruned DAG with edge kinds and prune reasons, interface freezes, per-item path attribution (including the documentation paths a document dispatch may edit), per-item blast radius, any open follow-up (branch, base, commit, repair-round count), and the current integration-review record (`status`, `treeHash`, `recordedAt`, covered items). It is ignored by Git and never committed.
 
 Snapshots are scoped: an item's worktree snapshot guards only that item's stages, and the assembled-tree snapshot guards the wave's post-assembly stages: the per-workspace test runs on the assembled tree, the integration review, and the readiness report. A worktree snapshot never invalidates an assembled-tree record, and an assembled-tree change does not by itself invalidate an item's review. But any post-assembly repair that touches an item's files requires that item's review to be re-run, and the integration review to be re-run. The guard is never satisfied by replacing the value, and a worktree snapshot is never compared with an assembled-tree record. A follow-up worktree gets its own snapshot against its base, and it does not replace the item's step-6 snapshot.
 

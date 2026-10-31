@@ -4,8 +4,8 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 
-const success = new Set(['PASS', 'PLAN_READY', 'NOT_APPLICABLE', 'COMMITTED'])
-const stopped = new Set(['FAIL', 'BLOCKED', 'REPLAN_REQUIRED', 'RECLASSIFY', 'INTERVIEW_ROUND'])
+const success = new Set(['PASS', 'PLAN_READY', 'NOT_APPLICABLE', 'COMMITTED', 'WAVE_READY', 'INTEGRATION_PASS'])
+const stopped = new Set(['FAIL', 'BLOCKED', 'REPLAN_REQUIRED', 'RECLASSIFY', 'INTERVIEW_ROUND', 'INTEGRATION_FINDINGS'])
 const levels = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 
 /** Invalid settings fail visibly instead of silently changing reasoning effort. */
@@ -86,11 +86,15 @@ export function validateReport(text, contract, agentName) {
   if (stopped.has(report.status)) return report.status
   const expected = agentName.startsWith('architect-')
     ? ['PLAN_READY']
-    : agentName === 'commit-agent'
-      ? ['COMMITTED']
-      : ['document-agent', 'formatter-agent'].includes(agentName)
-        ? ['PASS', 'NOT_APPLICABLE']
-        : ['PASS']
+    : agentName === 'wave-planner-agent'
+      ? ['WAVE_READY']
+      : agentName === 'integration-review-agent'
+        ? ['INTEGRATION_PASS']
+        : agentName === 'commit-agent'
+          ? ['COMMITTED']
+          : ['document-agent', 'formatter-agent'].includes(agentName)
+            ? ['PASS', 'NOT_APPLICABLE']
+            : ['PASS']
   if (!expected.includes(report.status))
     return `Status ${report.status} is not valid for ${agentName}`
   for (const key of ['requirements', 'checks', 'files', 'deviations', 'unresolved']) {
@@ -106,7 +110,7 @@ export function validateReport(text, contract, agentName) {
   ) {
     return 'Missing, extra, or duplicate requirement coverage; reconcile the assignment before continuing'
   }
-  const states = agentName.startsWith('architect-')
+  const states = agentName.startsWith('architect-') || agentName === 'wave-planner-agent'
     ? ['planned']
     : agentName === 'build-agent'
       ? ['implemented']
@@ -245,11 +249,13 @@ export function validatePriorRecords(contract, cwd, agentName) {
         'formatter-agent',
       ],
       documentation: ['document-agent', 'formatter-agent'],
+      wave: ['wave-planner-agent', 'build-agent', 'code-review-agent', 'formatter-agent'],
     }
-    const required = routes[contract.workType]
-    if (!required)
-      return 'Commit requires contract.workType: small, normal, large, or documentation'
+    const configured = routes[contract.workType]
+    if (!configured)
+      return 'Commit requires contract.workType: small, normal, large, wave, or documentation'
     if (!contract.expectedSnapshot) return 'Commit requires a current expectedSnapshot'
+    const required = [...configured]
     if (contract.documentRequired !== false && ['small', 'normal'].includes(contract.workType))
       required.push('document-agent')
     for (const stage of required) {

@@ -12,7 +12,7 @@ tools: read, bash
 
 Plan only. Translate settled requirements into an implementable design. Never implement, test, review, format, document, or commit the planned change.
 
-The orchestrator must pass `work_type: normal`. This agent is not used for small fixes or large features.
+The orchestrator must pass `workType: normal`. This agent is not used for small fixes or large features.
 
 ## Required Context
 

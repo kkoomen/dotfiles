@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+# =============================================================================
+# diff-tracker — session-scoped diff tracking for Pi
+#
+# Records a UUID-keyed unified diff of every prompt's changes, scoped to the
+# current Pi session (PI_SESSION_ID). Works with or without Git initialized in
+# the project: snapshots live in a private Git repo under
+# ~/.pi/diff-tracker/sessions/<session>/repos/ (work-tree = the project dir),
+# so the `git diff` command is used either way.
+#
+# Storage layout (override root with DIFF_TRACKER_DIR):
+#   ~/.pi/diff-tracker/
+#     sessions/<session-id>/
+#       seq                       monotonic diff counter for this session
+#       index.tsv                 seq|uuid|created|status|cwd|summary
+#       repos/<cwd-hash>.git/     private git repo (work-tree = project dir)
+#         .active_begin           begin commit hash of the active snapshot
+#       diffs/<uuid>.diff         unified diff (git diff --binary)
+#       diffs/<uuid>.json         metadata
+#
+# Commands:
+#   begin                 snapshot current project state (run BEFORE making changes)
+#   end [--summary TXT]   diff current state vs snapshot; store as UUID diff
+#   list                  list this session's diffs, oldest first
+#   show <id>             print a diff and its metadata
+#   undo <id>             revert a diff (reverse-apply; only when status=applied)
+#   redo <id>             re-apply an undone diff (only when status=undone)
+#
+# Global flags:
+#   --session <id>   override session id (default: $PI_SESSION_ID)
+#   --cwd <dir>      project dir to track (default: $PWD)
+# =============================================================================
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="${DIFF_TRACKER_DIR:-$HOME/.pi/diff-tracker}"
+EXCLUDES="$SKILL_DIR/excludes"
+
+SESSION=""
+CWD="$(pwd -P)"
+SUMMARY_ARG=""
+
+usage() {
+  sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# ---------- arg parsing ----------
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --session) SESSION="${2:-}"; shift 2 ;;
+    --cwd) CWD="$(cd "${2:-$PWD}" && pwd -P)"; shift 2 ;;
+    --summary) SUMMARY_ARG="${2:-}"; shift 2 ;;
+    --help|-h) usage ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+set -- "${args[@]:-}"
+
+[ $# -ge 1 ] || usage
+CMD="$1"; shift
+
+# ---------- session + project resolution ----------
+[ -n "$SESSION" ] || SESSION="${PI_SESSION_ID:-}"
+if [ -z "$SESSION" ]; then
+  echo "diff-tracker: no Pi session found (PI_SESSION_ID is unset). Run inside Pi or pass --session <id>." >&2
+  exit 1
+fi
+SKEY="${SESSION//[^A-Za-z0-9._-]/_}"
+
+if command -v shasum >/dev/null 2>&1; then
+  PKEY="$(printf '%s' "$CWD" | shasum -a 256 | cut -c1-16)"
+elif command -v md5 >/dev/null 2>&1; then
+  PKEY="$(printf '%s' "$CWD" | md5 -q)"
+else
+  PKEY="proj$(printf '%s' "$CWD" | wc -c | tr -d ' ')"
+fi
+
+SDIR="$ROOT/sessions/$SKEY"
+REPO="$SDIR/repos/$PKEY.git"
+GITDIR="$REPO/.git"
+DIFFDIR="$SDIR/diffs"
+INDEX="$SDIR/index.tsv"
+SEQFILE="$SDIR/seq"
+
+[ -n "$CWD" ] && [ -d "$CWD" ] || { echo "diff-tracker: cwd does not exist: $CWD" >&2; exit 1; }
+
+gitx() { git --git-dir "$GITDIR" --work-tree "$CWD" -c "core.excludesfile=$EXCLUDES" "$@"; }
+
+gen_uuid() {
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr '[:upper:]' '[:lower:]'
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import uuid; print(uuid.uuid4())'
+  else
+    od -An -N16 -tx1 /dev/urandom | tr -d ' \n' | sed -E 's/(.{8})(.{4})(.{4})(.{4})(.{12})/\1-\2-\3-\4-\5/'
+  fi
+}
+
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+# Pathspec exclusions for nested git repos (gitlinks would break git apply).
+# Heavy dirs are pruned here only to keep the find fast; they are also
+# excluded via the core.excludesfile patterns.
+gitlink_excludes() {
+  local d rel
+  while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    rel="${d#"$CWD"/}"
+    [ "$rel" != "$d" ] || continue          # skip anything outside CWD
+    rel="${rel%/}"                            # strip trailing slash
+    rel="${rel%.git}"                         # strip trailing .git
+    rel="${rel%/}"                            # strip trailing slash again
+    [ -n "$rel" ] || continue                 # root .git: handled natively by git
+    printf ':(exclude)%s\n' "$rel"
+  done < <(find "$CWD" \
+      \( -name .git -o -name node_modules -o -name .venv -o -name venv \
+         -o -name __pycache__ -o -name dist -o -name build -o -name .next \
+         -o -name .terraform -o -name target \) -prune -print 2>/dev/null || true)
+}
+
+stage_all() {
+  # rebuild the index from the worktree so stale entries (e.g. gitlinks
+  # committed by an interrupted run) cannot leak into snapshots
+  gitx rm -r --cached -q --ignore-unmatch . 2>/dev/null || true
+  # shellcheck disable=SC2046
+  # git >=2.50 exits 1 when :(exclude) pathspecs match paths the worktree
+  # .gitignore ignores (e.g. node_modules/); the excludes are only a
+  # convenience for gitlinks/speed, so a 1 here is not a real failure.
+  if [ "$#" -gt 0 ]; then
+    gitx add -A -- . "$@" >/dev/null || true
+  else
+    gitx add -A >/dev/null || true
+  fi
+}
+
+ensure_repo() {
+  mkdir -p "$DIFFDIR"
+  if [ ! -d "$GITDIR" ]; then
+    mkdir -p "$REPO"
+    git init -q "$REPO"
+    git --git-dir "$GITDIR" config user.name "diff-tracker"
+    git --git-dir "$GITDIR" config user.email "diff-tracker@pi.local"
+    git --git-dir "$GITDIR" config core.autocrlf false
+  fi
+}
+
+# ---------- begin ----------
+cmd_begin() {
+  ensure_repo
+  local -a excl=()
+  while IFS= read -r p; do [ -n "$p" ] && excl+=("$p"); done < <(gitlink_excludes)
+  if [ "${#excl[@]}" -gt 0 ]; then stage_all "${excl[@]}"; else stage_all; fi
+  gitx commit -q --allow-empty -m "begin $(date -u +%s)"
+  gitx rev-parse HEAD > "$REPO/.active_begin"
+  printf '%s\n' "$CWD" > "$REPO/.cwd"
+  echo "diff-tracker: snapshot taken for $(basename "$CWD") — make your changes, then run: diff-tracker end"
+}
+
+# ---------- end ----------
+make_summary() {
+  local b="$1" e="$2"
+  # name-status + numstat come from the same diff traversal, so entries
+  # are ordered identically; pair them by index (fall back to letters only
+  # if the counts ever disagree in length).
+  local -a st_paths=() st_letters=()
+  local st p
+  while IFS=$'\t' read -r st p; do
+    [ -n "$p" ] || continue
+    st_paths+=("$p"); st_letters+=("$st")
+  done < <(gitx diff --name-status --no-renames "$b" "$e" || true)
+
+  local -a ns_add=() ns_del=()
+  local a d
+  while IFS=$'\t' read -r a d p; do
+    [ -n "$p" ] || continue
+    ns_add+=("$a"); ns_del+=("$d")
+  done < <(gitx diff --numstat --no-renames "$b" "$e" || true)
+
+  local n="${#st_paths[@]}"
+  if [ "$n" -eq 0 ]; then echo "no changes"; return; fi
+
+  local -a parts=()
+  local i=0 path letter ca cd
+  for ((i=0; i<n; i++)); do
+    path="${st_paths[$i]}"; letter="${st_letters[$i]}"
+    ca=0; cd=0
+    if [ "$i" -lt "${#ns_add[@]}" ]; then
+      ca="${ns_add[$i]}"; cd="${ns_del[$i]}"
+      [ "$ca" = "-" ] && ca=0
+      [ "$cd" = "-" ] && cd=0
+    fi
+    case "$letter" in
+      A) parts+=("$path (new +$ca)") ;;
+      D) parts+=("$path (deleted -$cd)") ;;
+      M) parts+=("$path (M +$ca/-$cd)") ;;
+      *) parts+=("$path ($letter)") ;;
+    esac
+  done
+
+  local noun="file"; [ "$n" -gt 1 ] && noun="files"
+  local s="$n $noun: ${parts[*]}"
+  [ "$n" -gt 3 ] && s="$s ...(+$(( n - 3 )) more)"
+  printf '%s' "${s:0:200}"
+}
+
+cmd_end() {
+  [ -f "$REPO/.active_begin" ] || {
+    echo "diff-tracker: no active snapshot for $(basename "$CWD") — run 'diff-tracker begin' first." >&2
+    exit 1
+  }
+  ensure_repo
+  local begin_c; begin_c="$(cat "$REPO/.active_begin")"
+
+  local -a excl=()
+  while IFS= read -r p; do [ -n "$p" ] && excl+=("$p"); done < <(gitlink_excludes)
+  if [ "${#excl[@]}" -gt 0 ]; then stage_all "${excl[@]}"; else stage_all; fi
+
+  if gitx diff --cached --quiet; then
+    rm -f "$REPO/.active_begin"
+    echo "diff-tracker: no changes since snapshot — nothing recorded."
+    exit 0
+  fi
+
+  gitx commit -q -m "end $(date -u +%s)"
+  local end_c; end_c="$(gitx rev-parse HEAD)"
+
+  local uuid; uuid="$(gen_uuid)"
+  gitx diff --binary "$begin_c" "$end_c" > "$DIFFDIR/$uuid.diff" || [ $? -le 1 ] || exit 1
+
+  local auto; auto="$(make_summary "$begin_c" "$end_c")"
+  local summary="$auto"
+  [ -n "$SUMMARY_ARG" ] && summary="$SUMMARY_ARG"
+  summary="${summary//$'\t'/ }"; summary="${summary//$'\n'/ }"
+  summary="${summary:0:200}"
+
+  local stats files
+  stats="$(gitx diff --shortstat "$begin_c" "$end_c" | sed 's/^ *//' || true)"
+  files="$(gitx diff --name-only "$begin_c" "$end_c" | tr '\n' ',' | sed 's/,$//' || true)"
+
+  local seq=0
+  [ -f "$SEQFILE" ] && seq="$(cat "$SEQFILE")"
+  seq=$((seq + 1))
+  printf '%s\n' "$seq" > "$SEQFILE"
+
+  local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local short; short="$(printf '%s' "$uuid" | cut -c1-8)"
+
+  cat > "$DIFFDIR/$uuid.json" <<EOF
+{
+  "uuid": "$uuid",
+  "seq": $seq,
+  "session": "$(json_escape "$SESSION")",
+  "created": "$ts",
+  "cwd": "$(json_escape "$CWD")",
+  "summary": "$(json_escape "$summary")",
+  "stats": "$(json_escape "$stats")",
+  "files": "$(json_escape "$files")",
+  "status": "applied",
+  "begin_commit": "$begin_c",
+  "end_commit": "$end_c"
+}
+EOF
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$seq" "$uuid" "$ts" "applied" "${CWD//$'\t'/ }" "$summary" >> "$INDEX"
+
+  rm -f "$REPO/.active_begin"
+  echo "diff-tracker: recorded diff $short ($summary)"
+}
+
+# ---------- list ----------
+cmd_list() {
+  if [ ! -f "$INDEX" ]; then
+    echo "diff-tracker: no diffs yet for this session."
+    return 0
+  fi
+  local total; total="$(wc -l < "$INDEX" | tr -d ' ')"
+  echo "diff-tracker: session $(printf '%s' "$SKEY" | cut -c1-8) — $total diff(s), oldest → newest:"
+  awk -F'\t' '{ printf "  %3d. %s  %s  %-7s %s  [%s]\n", $1, substr($2,1,8), substr($3,1,19), $4, $6, $5 }' "$INDEX"
+  echo
+  echo "  use: diff-tracker show|undo|redo <id>"
+}
+
+# ---------- show / undo / redo ----------
+resolve_line() {
+  local id="$1" out=""
+  if [[ "$id" =~ ^[0-9]+$ ]]; then
+    out="$(awk -F'\t' -v s="$id" '$1==s{print}' "$INDEX" 2>/dev/null || true)"
+  else
+    out="$(awk -F'\t' -v p="$id" 'index($2,p)==1{print}' "$INDEX" 2>/dev/null || true)"
+  fi
+  local n; n="$(printf '%s\n' "$out" | sed '/^$/d' | wc -l | tr -d ' ')"
+  if [ "$n" -eq 0 ]; then
+    echo "diff-tracker: no diff matching '$id' in this session." >&2
+    return 1
+  fi
+  if [ "$n" -gt 1 ]; then
+    echo "diff-tracker: '$id' is ambiguous ($n matches) — use a longer id." >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
+}
+
+set_status() {
+  local uuid="$1" status="$2"
+  awk -F'\t' -v OFS='\t' -v u="$uuid" -v s="$status" '$2==u{$4=s}1' "$INDEX" > "$INDEX.tmp" && mv "$INDEX.tmp" "$INDEX"
+  sed -i '' "s/\"status\": \"applied\"/\"status\": \"$status\"/" "$DIFFDIR/$uuid.json"
+  sed -i '' "s/\"status\": \"undone\"/\"status\": \"$status\"/" "$DIFFDIR/$uuid.json"
+}
+
+cmd_show() {
+  local id="${1:-}"
+  [ -n "$id" ] || { echo "usage: diff-tracker show <id>" >&2; exit 1; }
+  local line; line="$(resolve_line "$id")" || exit 1
+  local uuid; uuid="$(printf '%s' "$line" | cut -f2)"
+  local meta="$DIFFDIR/$uuid.json"
+  echo "=== metadata ==="
+  [ -f "$meta" ] && cat "$meta" || echo "(metadata missing)"
+  echo "=== diff $uuid ==="
+  [ -f "$DIFFDIR/$uuid.diff" ] && cat "$DIFFDIR/$uuid.diff" || echo "(diff file missing)"
+}
+
+apply_diff() {
+  local id="${1:-}" mode="$2"
+  [ -n "$id" ] || { echo "usage: diff-tracker $mode <id>" >&2; exit 1; }
+  local line; line="$(resolve_line "$id")" || exit 1
+  IFS=$'\t' read -r seq uuid created status cwd summary <<<"$line"
+  local short; short="$(printf '%s' "$uuid" | cut -c1-8)"
+
+  local applyflag=""
+  local verb="" newstatus=""
+
+  if [ "$mode" = "undo" ]; then
+    [ "$status" = "applied" ] || { echo "diff-tracker: diff $short is $status (not applied) — nothing to undo." >&2; exit 1; }
+    applyflag="-R"
+    verb="revert"
+    newstatus="undone"
+  else
+    [ "$status" = "undone" ] || { echo "diff-tracker: diff $short is $status (not undone) — nothing to redo." >&2; exit 1; }
+    verb="re-apply"
+    newstatus="applied"
+  fi
+
+  [ -d "$cwd" ] || { echo "diff-tracker: project dir no longer exists: $cwd" >&2; exit 1; }
+  local diff="$DIFFDIR/$uuid.diff"
+  [ -f "$diff" ] || { echo "diff-tracker: diff file missing: $diff" >&2; exit 1; }
+
+  if ! ( cd "$cwd" && git apply --check $applyflag "$diff" ); then
+    echo "diff-tracker: cannot $verb diff $short — it conflicts with the current state (later changes may have touched the same lines)." >&2
+    echo "             Resolve manually, or undo/redo later diffs first." >&2
+    exit 1
+  fi
+  ( cd "$cwd" && git apply $applyflag "$diff" )
+  set_status "$uuid" "$newstatus"
+  echo "diff-tracker: diff $short $verb'd — status is now $newstatus"
+}
+
+case "$CMD" in
+  begin) cmd_begin ;;
+  end) cmd_end ;;
+  list) cmd_list ;;
+  show) cmd_show "${1:-}" ;;
+  undo) apply_diff "${1:-}" undo ;;
+  redo) apply_diff "${1:-}" redo ;;
+  *) echo "diff-tracker: unknown command '$CMD'" >&2; usage ;;
+esac

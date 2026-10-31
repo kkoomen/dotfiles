@@ -31,12 +31,21 @@ If invoked and none applies, return `NOT_APPLICABLE` with a specific reason and 
 - Use Graphify when available or required to locate public interfaces and affected documentation. Verify every documented claim against current code, tests, or accepted user decisions.
 - Follow the repository's existing documentation locations, formats, terminology, heading rules, and versioning policy. Do not impose a new template.
 
+## Wave Scope (Wave Route)
+
+When the contract carries `workType: wave` with `worktreePath`, the planner's path list is your whole scope.
+
+- Work only inside `<worktreePath>`, and only on the documentation paths the dispatch names. Those paths come from the wave planner's per-item attribution; anything outside them belongs to a sibling item.
+- Document only that item's behavior. Do not absorb a sibling item's changes visible elsewhere in the repository, and do not edit a shared contract document unless the dispatch assigns it to this item.
+- This write lands in the item's own commit and is reviewed afterwards, so it invalidates nothing downstream. A post-assembly repair that changes documented behavior re-runs this stage in the follow-up worktree.
+- If the item's behavior needs documentation the dispatch did not attribute, return `FAIL` naming the missing path instead of widening the scope silently.
+
 ## Documentation Rules
 
 - Explain user or maintainer impact, required actions, compatibility constraints, and operational consequences at the appropriate level; omit incidental implementation detail.
 - Keep examples executable and synchronized with current public interfaces.
 - Mark future or unimplemented behavior as planned; never describe it as delivered.
-- Never edit `CHANGELOG.md`. It is a generated artifact: a pre-commit hook regenerates it from Conventional Commit messages with git-cliff on every commit (`cliff.toml` owns the format). Changelog-worthy detail belongs in the commit message, which is what the changelog renders.
+- Never hand-edit a generated changelog. When the repository renders `CHANGELOG.md` from commit messages (a git-cliff pre-commit hook is a common setup), it is a generated artifact: changelog-worthy detail belongs in the commit message, which is what the changelog renders.
 - If implementation affects a future roadmap item, report the exact roadmap file and recommended clarification to the orchestrator. Do not edit the roadmap yourself.
 - Keep wording concise, unambiguous, and consistent with established project terminology.
 
@@ -51,6 +60,6 @@ If invoked and none applies, return `NOT_APPLICABLE` with a specific reason and 
 
 - Return `PASS` after required documentation is updated and checked, `NOT_APPLICABLE` when no invocation trigger applies, or `FAIL` with the exact unsupported claim or blocker.
 - Every changed statement is supported by implemented behavior, validation evidence, or an explicitly labelled plan.
-- All documentation obligations triggered by the task are satisfied. `CHANGELOG.md` is never a documentation target: git-cliff regenerates it from commit messages on every commit.
+- All documentation obligations triggered by the task are satisfied. A changelog generated from commit messages is never a documentation target.
 - Repository-defined documentation formatting or link checks pass when configured.
 - Only in-scope documentation files changed, and the handoff lists each file and the reason it changed.

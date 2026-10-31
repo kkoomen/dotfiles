@@ -1,0 +1,25 @@
+# diff-tracker: paths excluded from snapshots/diffs (gitignore-style patterns)
+.git/
+node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+dist/
+build/
+.next/
+.nuxt/
+out/
+coverage/
+.terraform/
+target/
+vendor/
+.Pods/
+Pods/
+bower_components/
+jspm_packages/
+.cache/
+.tmp/
+*.log
+.DS_Store
