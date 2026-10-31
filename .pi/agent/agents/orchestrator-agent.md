@@ -87,6 +87,8 @@ Every item in a wave is a large feature, because each slot validates its plan th
 
 A wave is a continuous backfill scheduler: N slots stay busy, and each finishing item is replaced immediately by the next ready item from the roadmap until the queue is empty. Never serialize independent items into one route, never run a fixed batch and stop, and never leave a slot idle waiting for a slow item.
 
+Dispatch each stage as **one** `parallel` call with one entry per active slot, never one call per slot in sequence. While at least N items are ready, all N slots must be in flight together, and the batch you dispatch for a stage must match the number of active slots.
+
 Example: a 36-item correctness roadmap in one version. Four slots run; each item commits and is cherry-picked onto the rolling assembly head within minutes of finishing, and the next `[ ]` item starts in the freed slot until the version is empty.
 
 ### Dependency Edge Taxonomy
