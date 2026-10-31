@@ -25,8 +25,8 @@ Verify release readiness, stage only the assigned task, and create the focused c
 - Every check required by the selected route or `AGENTS.md`—such as tests, builds, type checks, formatting, linting, review, or documentation—is current after the last change that could affect it.
 - No blocking finding, unresolved conflict, temporary artifact, debug code, or accidental secret is present in the task diff.
 - The commit contains one roadmap item, feature, fix, or inseparable supporting change—not a collection of unrelated work.
-- For `workType: wave`: the step-2 `WAVE_READY` record with every edge classified or pruned, plus this item's own build, delta-gate, formatter, and review evidence. Document and formatter writes invalidate nothing here, because both run before review inside the item's worktree. A content change after review re-runs that review and blocks the commit. The launcher enforces this stage set for a `wave` dispatch, so the planner record must appear in `priorRecords`.
-- For `workType: wave`, `INTEGRATION_PASS` is not a step-7 gate: item commits precede assembly and integration review, so the orchestrator verifies that record at its step-11 readiness check instead.
+- For `workType: wave`: the `WAVE_READY` record with every edge classified or pruned, plus this item's own build, delta-gate, formatter, and review evidence. Document and formatter writes invalidate nothing here, because both run before review inside the item's worktree. A content change after review re-runs that review and blocks the commit. The launcher enforces this stage set for a `wave` dispatch, so the planner record must appear in `priorRecords`.
+- For `workType: wave`, `INTEGRATION_PASS` is not an item-commit gate: item commits precede the final gates and the integration review, so the orchestrator verifies that record in its readiness check instead.
 - For a follow-up dispatch (`followup/<itemId>` or `assembly-fix/<itemId>` with a base), the build, formatter, and review records for that follow-up worktree, plus the wave's current integration-review record and the finding or conflict ID that opened the route.
 
 ## Commit Rules
@@ -38,20 +38,20 @@ Verify release readiness, stage only the assigned task, and create the focused c
 
 ## Wave Mode
 
-When the contract carries `workType: wave` with `worktreePath`, `baseCommit`, and one item ID, this route creates that item's single commit, inside that item's worktree, on branch `item/<itemId>`. N dispatches run in parallel, each carrying exactly one item's files. This mode and the follow-up mode below are the only exceptions to the single-commit rule; no combined wave commit exists.
+When the contract carries `workType: wave` with `worktreePath`, `baseCommit`, and one item ID, this route creates that item's single commit, inside that item's worktree, on branch `item/<itemId>`. This mode and the follow-up mode below are the only exceptions to the single-commit rule; no combined wave commit exists. The orchestrator cherry-picks the commit onto the rolling assembly head immediately, and the slot then takes its next ready item.
 
 - Each commit contains exactly one item's files, apart from a mandatory shared generated artifact that a repository hook regenerates on every commit (the git-cliff `CHANGELOG.md` is the known case). Never combine two items and never commit a checkout holding more than one item's changes.
 - Stage and commit inside `<worktreePath>` only, against `baseCommit`. The builder's working tree is the content, so the commit records exactly what review examined.
-- Do not cherry-pick, assemble, reorder, or amend: the orchestrator owns the step-8 assembly of these commits in DAG order, and cherry-pick preserves each message so history keeps one commit per item.
-- Verify before committing: the item's review record with its actual reviewed file list, its delta-gate baseline and post-change results, the formatter record for this worktree, and the step-2 `WAVE_READY` record.
+- Do not cherry-pick, assemble, reorder, or amend: the orchestrator owns the rolling assembly of these commits, one at a time, and cherry-pick preserves each message so history keeps one commit per item.
+- Verify before committing: the item's review record with its actual reviewed file list, its delta-gate baseline and post-change results, the formatter record for this worktree, and the `WAVE_READY` record.
 - Return `FAIL` naming the missing, stale, or out-of-scope stage. Do not re-review, re-format, repair, or assemble anything.
 - Handoff: item ID, worktree path, `baseCommit`, branch `item/<itemId>`, commit hash, subject, and that worktree's final task-related working-tree status.
 
 ### Follow-up Mode (post-assembly)
 
-When the contract carries a follow-up assignment instead of an item assignment, this route creates exactly one follow-up commit on the follow-up branch the orchestrator created: `followup/<itemId>` for a step-9 or step-10 failure, `assembly-fix/<itemId>` for a step-8 cherry-pick conflict.
+When the contract carries a follow-up assignment instead of an item assignment, this route creates exactly one follow-up commit on the follow-up branch the orchestrator created: `followup/<itemId>` for a final-gate or integration-review failure, `assembly-fix/<itemId>` for an assembly cherry-pick conflict.
 
-- A follow-up commit is not an item commit. It is the explicit carve-out from the one-commit-per-item rule and from the exactly-one-item's-files rule, so creating it does not violate either; the item's step-7 commit is never amended, reverted, or duplicated.
+- A follow-up commit is not an item commit. It is the explicit carve-out from the one-commit-per-item rule and from the exactly-one-item's-files rule, so creating it does not violate either; the item's own commit is never amended, reverted, or duplicated.
 - Stage and commit only inside the follow-up worktree, against its recorded base, and only the files that repair the named finding or conflict. A shared generated artifact that repository hooks regenerate, such as `CHANGELOG.md`, is included when the hook stages it; it never justifies dropping a repair file or widening the commit.
 - Do not cherry-pick the follow-up commit. The orchestrator assembles it onto the wave branch, then the integration review re-runs and records a new `treeHash`.
 - Handoff: item ID, follow-up worktree path, base, branch (`followup/<itemId>` or `assembly-fix/<itemId>`), commit hash, subject, the finding or conflict ID it repairs, and that worktree's final task-related working-tree status.

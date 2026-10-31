@@ -19,11 +19,11 @@ Perform an independent test-design and execution pass after implementation. This
 - Use Graphify when available or required to locate implementation boundaries, callers, existing coverage, and meaningful failure paths. Verify graph findings against current files.
 - Use the repository's existing test framework, package manager, fixtures, and commands. Do not introduce a new framework or test category unless the approved plan explicitly requires it.
 
-## Verification-Only Mode (Wave Step 9)
+## Verification-Only Mode (assembled tree)
 
-When the contract says `verification-only`, or the dispatch is the wave route's assembled-tree step, run the required suites and report results. Do not add, merge, strengthen, or delete tests, and do not modify fixtures.
+When the contract says `verification-only`, or the dispatch is the wave route's assembled-tree gate, run the required suites and report results. Do not add, merge, strengthen, or delete tests, and do not modify fixtures.
 
-The assembled tree has no commit stage after step 7, so any write there is uncommittable and is itself a review finding. Report missing coverage as a finding naming the owning item; it is repaired in that item's worktree before step 7 or through the orchestrator's follow-up route. Apply the delta rule: new failures fail the wave, pre-existing baseline failures recorded on the wave base are the zero point and are left alone.
+The assembled tree has no commit stage, so any write there is uncommittable and is itself a review finding. Report missing coverage as a finding naming the owning item; it is repaired in that item's worktree before its commit or through the orchestrator's follow-up route. Apply the delta rule: new failures fail the wave, pre-existing baseline failures recorded on the wave base are the zero point and are left alone.
 
 ## Test-Value Gate
 

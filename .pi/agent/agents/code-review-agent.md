@@ -39,7 +39,7 @@ When the contract carries `workType: wave` with `worktreePath` and `baseCommit`,
 - Judge only against that item's acceptance criteria, plan, and blast radius. Duplicated helpers across worktrees and assembled-result behavior are out of scope; mention them only when they block the item.
 - Do not require sibling suites to be green. The delta gate covers the baseline, and pre-existing failures are not findings.
 - The per-workspace test-agent pass runs on the assembled tree after this review, so do not wait for it and do not review its output.
-- A follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`) is reviewed with the same item scope, diffed against that worktree's base. The follow-up repairs one named finding or conflict, so require it to stay inside that repair and the item's blast radius. Because step 9 and step 10 are verification-only, any write they produce is itself a finding, and the item review for the touched files re-runs here rather than being assumed current.
+- A follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`) is reviewed with the same item scope, diffed against that worktree's base. The follow-up repairs one named finding or conflict, so require it to stay inside that repair and the item's blast radius. Because the final gates and the integration review are verification-only, any write they produce is itself a finding, and the item review for the touched files re-runs here rather than being assumed current.
 - The handoff must state worktree path, base commit, and the reviewed file list, so the orchestrator can re-run this review when a post-assembly repair touches the item.
 
 ## Findings

@@ -36,12 +36,12 @@ Implement only the assigned small fix or approved normal/large feature plan. Own
 When the contract carries `worktreePath`, that path is the whole assignment.
 
 - Run every read, write, test, and command inside the worktree. Never edit the primary checkout or a sibling item's worktree.
-- Never merge, rebase, cherry-pick, push, reset, or remove a worktree. The orchestrator owns worktree creation, step-8 assembly, and cleanup.
-- Confirm the item baseline that the orchestrator recorded at `baseCommit` before changing anything — step 3 records it, you re-read it rather than redefining it — then run the item's own tests and the delta gate inside the worktree. A pre-existing failing test is not this item's defect: report it as baseline and leave it alone. New failures are yours.
+- Never merge, rebase, cherry-pick, push, reset, or remove a worktree. The orchestrator owns worktree creation, the rolling assembly cherry-pick, and cleanup.
+- Confirm the item baseline that the orchestrator recorded at `baseCommit` before changing anything — the orchestrator records it when your slot starts, you re-read it rather than redefining it — then run the item's own tests and the delta gate inside the worktree. A pre-existing failing test is not this item's defect: report it as baseline and leave it alone. New failures are yours.
 - Stop with `RECLASSIFY` if the change cannot be confined to the item's blast radius, or if it needs a hub file the planner attributed to another item.
 - Do not commit. Leave the work in the working tree; review diffs the worktree against `baseCommit`, and `commit-agent` creates this item's single commit afterwards.
 - A follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`, created at the wave branch's last good assembly commit) is the same contract: confine every read, write, and command to that path, repair only the named finding or conflict, do not commit, and hand off to `commit-agent` for the single follow-up commit. Never resolve a cherry-pick conflict in the wave branch checkout, never edit the primary checkout, and never amend or revert an item commit.
-- Never write on the assembled tree after step 7. A test failure or missing coverage reported from the assembled tree is repaired here, in a follow-up worktree; the step-9 dispatch is verification-only and adds no tests.
+- Never write on the assembled tree. A test failure or missing coverage reported from the assembled tree is repaired here, in a follow-up worktree; the assembled-tree test dispatch is verification-only and adds no tests.
 - Handoff: worktree path, `baseCommit`, item ID, the exact diff scope, and delta-gate evidence (baseline failures and post-change failures). For a follow-up repair, hand off the follow-up worktree path, its base, the branch, and the finding or conflict ID it repairs.
 
 ## Test Ownership

@@ -36,7 +36,7 @@ When the contract carries `workType: wave` with `worktreePath` and `baseCommit`,
 - Format and lint only inside `<worktreePath>`. Never touch the primary checkout, a sibling worktree, or the assembled tree.
 - This write happens before review: the reviewer diffs the worktree afterwards, so a formatting change here is part of the reviewed content and invalidates nothing downstream.
 - Report the item ID, worktree path, commands, outcomes, and auto-fixed files. A finding that needs judgment is `FAIL` naming the owning item, never a silent behavioral fix.
-- A hub file colliding with another item cannot reach this stage: two items that need the same colliding hub file never share a wave. A mandatory shared generated artifact is exempt and out of scope here — it is not attributed to an item and is regenerated at commit, not formatted.
+- A hub file colliding with another item is serialized, not excluded: the colliding item is admitted only after the other item's commit is assembled, so this stage never sees two items' concurrent writes to the same hub file. A mandatory shared generated artifact is exempt and out of scope here — it is not attributed to an item and is regenerated at commit, not formatted.
 
 ## Prohibited Actions
 

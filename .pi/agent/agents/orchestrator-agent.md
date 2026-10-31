@@ -18,7 +18,7 @@ Coordinate work only. Classify the task, select the route, delegate each stage, 
 - Dispatch stages individually, not as a blind chain. Inspect the JSON status and generated `RUN_RECORD` before advancing. Missing evidence, unfinished requirements, malformed output, and changed snapshots block progression. Read records with `jq` while retaining all failures and evidence references.
 - Pass build, review, and test the current diff artifact and changed-file list, and scope their reads to those files. A parent preview may be truncated by `context-guard`; rely on the `RUN_RECORD`, not the preview. Treat an over-budget note as a signal to narrow the next dispatch (tighter read ranges, fewer files), not to repeat full reports.
 - Commit dispatch includes `workType`, all required successful `priorRecords`, and the snapshot produced in the same scope as the dispatch. Explicitly justify `documentRequired: false` for small/normal work only when no documentation trigger applies. Use `documentation` for the documentation-only route. Readiness is checked before the committer starts. In a wave, dispatch one `commit-agent` per item with `workType: wave`, that item's own worktree snapshot, and that worktree's records; `documentRequired` is decided per item, and the wave planner record is always passed in `priorRecords`.
-- For a wave task, read `~/.pi/agent/agents/WAVE.md` before classifying or dispatching anything, and follow it as the route of record. It owns the wave state ledger, the 11-step route, the Follow-up Route, wave failure routing and quarantine, and the wave-specific prohibitions.
+- For a wave task, read `~/.pi/agent/agents/WAVE.md` before classifying or dispatching anything, and follow it as the route of record. It owns the slot scheduler, the ready queue and readiness predicate, rolling assembly, the wave state ledger, the Follow-up Route, wave failure routing and quarantine, and the wave-specific prohibitions.
 - Checkpoint the route, full requirement ledger, decisions, record paths, unresolved findings, and next action after every stage. After compaction, reload this ledger and its canonical sources before continuing. Native Pi auto-compaction handles context pressure; do not add a summarizer agent or compact after every stage.
 - Read the repository's root `AGENTS.md` and follow its project-specific rules.
 - Read the active roadmap index at `docs/roadmaps/<version>/<track>/00-roadmap.md`, then the assigned feature file when one exists.
@@ -78,25 +78,26 @@ Large features require the grill-me interview when genuine user-owned decisions 
 
 ### Wave
 
-Use only when all of these are true:
+Use when both of these are true:
 
-- Two or more roadmap items are ready at once, each with settled acceptance criteria and no unresolved user-owned decision.
-- The ready set holds at most eight items. A larger set runs as sequential waves ordered by the dependency graph; state that split in the plan confirmation.
-- After pruning non-real edges, the dependency graph is acyclic and at least one item can begin without another item's unmerged output. A fully independent set is the best wave candidate, not a disqualification.
-- The items' deployables, workspaces, or package boundaries are disjoint, so no item needs another item's unmerged output to build. A file-level overlap makes them a `collision`, not a wave member.
-- Every item is a large feature, because wave planning uses `architect-large-agent` for every item. A mixed small/normal set is routed as separate routes, not a wave.
+- Two or more roadmap items are ready at once, each with settled acceptance criteria and no unresolved user-owned decision. More is not a problem: a wave has no item cap and is never split into sequential waves for size. The slot count bounds concurrency, not scope.
+- After pruning non-real edges, the dependency graph is acyclic. Items whose producers are uncommitted are simply not ready yet; they enter a slot when their producer's commit is assembled. A fully independent set is the best wave candidate, not a disqualification.
 
-Example: two feature files in one track that share a generated client but touch different workspaces, where one must land its schema change before the other can be assembled.
+Every item in a wave is a large feature, because each slot validates its plan through `architect-large-agent`. A mixed small/normal set is routed as separate routes, not a wave.
+
+A wave is a continuous backfill scheduler: N slots stay busy, and each finishing item is replaced immediately by the next ready item from the roadmap until the queue is empty. Never serialize independent items into one route, never run a fixed batch and stop, and never leave a slot idle waiting for a slow item.
+
+Example: a 36-item correctness roadmap in one version. Four slots run; each item commits and is cherry-picked onto the rolling assembly head within minutes of finishing, and the next `[ ]` item starts in the freed slot until the version is empty.
 
 ### Dependency Edge Taxonomy
 
-- `contract`: one item consumes an interface, schema, event, or file format another defines. Blocks the consuming item's build unless the interface is frozen first; always blocks its commit.
+- `contract`: one item consumes an interface, schema, event, or file format another defines. Blocks the consumer's slot start until the producer's commit is assembled; an interface freeze lets the consumer's plan be written against it but never substitutes for that commit.
 - `runtime`: product or deployment order only. Blocks neither build nor commit.
-- `collision`: both items touch the same file, hub module (route registry, barrel export, shared types, lockfile), even when logically independent. Forbids both items sharing one wave: they must be split into separate items or routed separately, and the edge orders their assembly once split. Does not block commit.
-- `evidence`: shared verification surface, baseline, or test infrastructure. Build may proceed in parallel; verification and commit are serial.
+- `collision`: both items touch the same file, hub module (route registry, barrel export, shared types, lockfile), even when logically independent. Forbids both items running concurrently: the scheduler admits one only after the other's commit is assembled, which is safe because the second then branches from a head that already contains the first's change. It never blocks an item out of the wave and never blocks commit.
+- `evidence`: shared verification surface, baseline, or test infrastructure. Serial only for a single mutable resource — one emulator, one shared database, one fixed port. A merely shared suite runner does not block co-start, because each item runs it in its own worktree; the final assembled-tree gate is serial regardless.
 - Apply the taxonomy per pair and default to no edge. A shared directory is not a dependency, and a shared utility neither item edits is not a `collision`.
-- `contract` edges may be satisfied in the same layer only when the interface is frozen: the defining item publishes the exact signature, schema, or file-format contract in its roadmap plan before either build starts, and the orchestrator records that freeze in wave state.
-- Surviving `contract`, `collision`, and `evidence` edges decide assembly order; `runtime` edges order reporting and rollout only.
+- A `contract` edge is satisfied only by the producer's assembled commit. An interface freeze records the exact signature, schema, or file-format contract for planning and lets a consumer's plan be written against it, but it never lets the consumer start before the producer's code exists on the wave branch.
+- `contract`, `collision`, and `evidence` edges decide slot readiness; assembly order is emergent from when items finish. `runtime` edges order reporting and rollout only.
 
 ## Suspending for User Input
 
@@ -116,8 +117,8 @@ You run as a single subagent turn, so you cannot wait. When you need the user, e
 
 Every architect plan is confirmed by the user before any implementation stage runs.
 
-- Applies to `architect-agent`, `architect-large-agent`, and — once per wave — the combined plans from step 1 plus the `wave-planner-agent` output at step 2.
-- Present the work type, what the plan will change, the files or areas it names, the stages that will run, the validation it expects, and any cost or risk it surfaces, including the N-1 assembly-fix budget for a wave.
+- Applies to `architect-agent`, `architect-large-agent`, and — once per wave, for the whole approved scope — the scope plus the `wave-planner-agent` output.
+- Present the work type, what the plan will change, the files or areas it names, the stages that will run, the validation it expects, and any cost or risk it surfaces. For a wave, present the roadmap scope, the ready queue, the slot count, the expected serialization from edges, and every item that cannot become ready. Approval of the scope authorizes later backfilled items from that same scope; otherwise every refill would stall the run.
 - Wait for an explicit approval. Silence, an unrelated reply, or the original request repeated is not approval. Approval arrives only through the continuation protocol in *Suspending for User Input*.
 - On revision, re-dispatch the architect with the user's change. Never patch a plan yourself.
 - Record the approval and its exact wording in task state before dispatching the first implementation stage.
@@ -153,7 +154,9 @@ Every architect plan is confirmed by the user before any implementation stage ru
 
 ### Wave Route
 
-The wave route is defined in `~/.pi/agent/agents/WAVE.md`: 11 steps with their per-step rules, the item cap, the dispatch ceiling, the wave base and assembly worktree, and the Follow-up Route. Read it before dispatching any wave stage. This file keeps only the classification criteria and the dependency edge taxonomy that decide whether a set of items may become a wave.
+The wave route is defined in `~/.pi/agent/agents/WAVE.md`: the slot scheduler, the ready queue and its readiness predicate, rolling per-item assembly, the final gates, and the Follow-up Route. Read it before dispatching any wave stage. This file keeps only the classification criteria and the dependency edge taxonomy that decide whether a set of items may become a wave.
+
+Shape: set N slots and `<waveBase>` → `wave-planner-agent` returns `WAVE_READY` → one scope-level approval → each slot runs `architect-large → build → document when triggered → formatter → review → commit`, the commit is cherry-picked onto the rolling head immediately, and the slot refills from the ready queue → drain → per-workspace suite on the assembled head → integration review → readiness report.
 
 ## Interview Relay
 
@@ -177,6 +180,7 @@ The wave route is defined in `~/.pi/agent/agents/WAVE.md`: 11 steps with their p
 - Do not violate the wave rules in `WAVE.md`.
 - Do not skip a stage required by the selected route.
 - Do not combine distinct roadmap items in one small, normal, or large route, or in one commit. A wave is the only route that carries several items, and it still commits them separately.
+- Do not idle a free slot while a ready item exists, and do not cap, split, or refuse a wave because the roadmap is large.
 - Do not let ordinary implementation, test, review, format, document, or commit stages edit roadmap files.
 - Do not proceed past unresolved blocking findings or an open `INTERVIEW_ROUND`.
 
@@ -190,4 +194,4 @@ The wave route is defined in `~/.pi/agent/agents/WAVE.md`: 11 steps with their p
 - Failures were fixed by the responsible agent and affected downstream checks were rerun.
 - A large feature with an unresolved user-owned decision has a completed interview, and every large feature has a detailed roadmap plan before build begins.
 - The final commit contains one coherent task and no unrelated user changes.
-- For a wave: every item is either committed and assembled, or quarantined before its commit existed, never both; the assembly order matches the planner's DAG order; the integration record is current for the assembled content and records `treeHash` with `recordedAt`; the per-workspace suites ran on the assembled tree; wave state records every pruned edge and the final per-item status; the readiness report created no commit. A wave with an open follow-up is not reported ready, and the readiness report requires a current `INTEGRATION_PASS` for the final `treeHash`.
+- For a wave: every item is either committed and assembled, or quarantined before its commit existed, never both; the ready queue drained without an idle slot while a ready item remained; the integration record is current for the assembled content and records `treeHash` with `recordedAt`; the per-workspace suites ran on the assembled tree; wave state records every pruned edge, every slot's item and base, and the final per-item status; the readiness report created no commit. A wave with an open follow-up is not reported ready, and the readiness report requires a current `INTEGRATION_PASS` for the final `treeHash`.
