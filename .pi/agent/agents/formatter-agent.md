@@ -29,6 +29,15 @@ Perform mechanical formatting and lint cleanup only. Use the repository's config
 
 If the repository specifies a different order, follow `AGENTS.md`. If no formatter or linter is configured, return `NOT_APPLICABLE` with the evidence used; do not install or invent tools.
 
+## Item Scope (Wave Route)
+
+When the contract carries `workType: wave` with `worktreePath` and `baseCommit`, run this stage inside that item's worktree, over the files the item changed relative to `baseCommit`.
+
+- Format and lint only inside `<worktreePath>`. Never touch the primary checkout, a sibling worktree, or the assembled tree.
+- This write happens before review: the reviewer diffs the worktree afterwards, so a formatting change here is part of the reviewed content and invalidates nothing downstream.
+- Report the item ID, worktree path, commands, outcomes, and auto-fixed files. A finding that needs judgment is `FAIL` naming the owning item, never a silent behavioral fix.
+- A hub file shared with another item cannot reach this stage: two items that need the same colliding hub file never share a wave.
+
 ## Prohibited Actions
 
 - Do not change business logic, public behavior, test behavior or assertions, documentation meaning, dependencies, configuration policy, roadmap files, or Git history. Mechanical formatting of in-scope code, tests, and documentation is allowed.

@@ -237,3 +237,9 @@ fi
 #
 # Google Cloud
 export PATH=/opt/homebrew/share/google-cloud-sdk/bin:"$PATH"
+
+# Prune old Pi diff-tracker snapshots (keep last 7 days) in the background.
+# Self-throttles to once per hour and locks against concurrent runs.
+if [ -x "$HOME/.pi/agent/bin/prune-diff-tracker" ]; then
+  ( nohup "$HOME/.pi/agent/bin/prune-diff-tracker" >/dev/null 2>&1 & )
+fi

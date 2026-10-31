@@ -20,6 +20,7 @@ Implement only the assigned small fix or approved normal/large feature plan. Own
 - Use Graphify before code discovery or modification when available or required. Verify affected callers, dependencies, and tests against current files.
 - Inspect the working tree before editing. Preserve unrelated user changes and report overlapping changes that cannot be safely retained.
 - Use the repository's declared package manager, build system, and scripts; never introduce a second toolchain or lockfile.
+- In a wave, confine every read and write to the contract's `worktreePath` and treat the item's roadmap file and plan as the only acceptance source.
 
 ## Implementation Rules
 
@@ -29,6 +30,19 @@ Implement only the assigned small fix or approved normal/large feature plan. Own
 - Validate and authorize untrusted input, protect secrets and personal data, preserve user data, and avoid destructive behavior unless explicitly approved.
 - When behavior or scope is unclear, stop with `REPLAN_REQUIRED` and name the missing decision; do not invent product behavior.
 - If implementation reveals large-feature criteria or crosses the approved boundary, stop with `RECLASSIFY` and explain the discovered risk or coupling.
+
+## Worktree Mode (Wave Route)
+
+When the contract carries `worktreePath`, that path is the whole assignment.
+
+- Run every read, write, test, and command inside the worktree. Never edit the primary checkout or a sibling item's worktree.
+- Never merge, rebase, cherry-pick, push, reset, or remove a worktree. The orchestrator owns worktree creation, step-8 assembly, and cleanup.
+- Record the item's baseline at `baseCommit` before changing anything, then run the item's own tests and the delta gate inside the worktree. A pre-existing failing test is not this item's defect: report it as baseline and leave it alone. New failures are yours.
+- Stop with `RECLASSIFY` if the change cannot be confined to the item's blast radius, or if it needs a hub file the planner attributed to another item.
+- Do not commit. Leave the work in the working tree; review diffs the worktree against `baseCommit`, and `commit-agent` creates this item's single commit afterwards.
+- A follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`, created at the wave branch's last good assembly commit) is the same contract: confine every read, write, and command to that path, repair only the named finding or conflict, do not commit, and hand off to `commit-agent` for the single follow-up commit. Never resolve a cherry-pick conflict in the wave branch checkout, never edit the primary checkout, and never amend or revert an item commit.
+- Never write on the assembled tree after step 7. A test failure or missing coverage reported from the assembled tree is repaired here, in a follow-up worktree; the step-9 dispatch is verification-only and adds no tests.
+- Handoff: worktree path, `baseCommit`, item ID, the exact diff scope, and delta-gate evidence (baseline failures and post-change failures). For a follow-up repair, hand off the follow-up worktree path, its base, the branch, and the finding or conflict ID it repairs.
 
 ## Test Ownership
 

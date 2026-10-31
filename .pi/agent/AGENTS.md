@@ -6,10 +6,26 @@
 
 # Planning & Delegation Rules
 
-- First judge the task size. It is good to question whether to call the orchestrator; make that call explicitly before acting.
-- **Tiny fix** (clear, localized, low-risk, e.g. a typo, one-line change, obvious small edit): implement it directly. No plan, no architect, no orchestrator.
-- **Not a tiny fix**: do NOT invent your own plan. You are forbidden from producing the plan yourself. You MUST delegate planning to the architect agent (`subagent` with `architect-agent` for normal work, `architect-large-agent` for large/ambiguous work), then act on the returned plan.
-- Never skip the architect for non-tiny work on the grounds that the plan "seems obvious".
+- Route every implementation request through `orchestrator-agent` first: small fixes, normal features, large features, and waves, in any roadmap-driven project. The orchestrator classifies the work and dispatches the route. The main thread does not pick a shortcut.
+- The main thread must not implement, test, review, format, document, or commit a routed request itself, and must not invent a plan for it. Hand the orchestrator the request as written, plus any decision the user has already made.
+- Opt-out is explicit and per request. Bypass routing only when the user says so directly, for example "don't route it through the orchestrator", "just do it directly", or "no orchestrator". A tiny-looking diff, a long description, a user-authored plan, or silence is not an opt-out.
+- The cost is one extra dispatch and its latency on trivial edits. Accept it: consistent classification, evidence, and status are worth more than saving a round trip on a one-line change.
+- Inside a routed task, the orchestrator's route and evidence rules govern. If scope grows past the chosen route, reclassify; never keep a cheaper route to save time.
+
+# Wave and Dependency Rules
+
+A wave is one orchestrator route that runs independent roadmap items concurrently. It is not permission for the main thread or a specialist to work outside its item.
+
+- Wave entry needs two or more ready roadmap items, a pruned dependency DAG with at least two layers, and disjoint deployables or workspaces.
+- Classify every dependency edge before ordering items. Never assume roadmap items have a total order.
+  - `contract`: one item consumes an interface, schema, event, or file format another defines. Blocks the consuming item's build unless the interface is frozen first; always blocks its commit.
+  - `runtime`: product or deployment order only. Blocks neither build nor commit.
+  - `collision`: both items touch the same file, hub module (route registry, barrel export, shared types, lockfile), even when logically independent. Forbids both items sharing one wave: they must be split into separate items or routed separately, and the edge orders their assembly once split. Does not block commit.
+  - `evidence`: shared verification surface, baseline, or test infrastructure. Build may proceed in parallel; verification and commit are serial.
+- Prune edges that are not real before assigning layers. Record every pruned edge and its reason.
+- One worktree per item, one review per item, one commit per item. A wave never combines items into one commit or one review. The single exception is a post-assembly follow-up: it lands as one follow-up commit on `followup/<itemId>` (or `assembly-fix/<itemId>` for an assembly conflict), assembled by the orchestrator, followed by a re-run integration review; a wave with an open follow-up is not reported ready.
+- Files a repository hook regenerates on every commit, such as the git-cliff `CHANGELOG.md`, are mandatory shared artifacts: the planner must list them, and they are excluded from the one-item-files rule.
+- Wave coordination state lives in `.pi/state/<waveId>.json` and is never committed.
 
 # Strict Rule: Never Revert or Discard Work You Did Not Make
 

@@ -34,6 +34,8 @@
 	<true/>
 	<key>AutoHideTmuxClientSession</key>
 	<true/>
+	<key>ClaudeCodeWorkgroupUpsellSuppressed</key>
+	<true/>
 	<key>ClosingTmuxTabKillsTmuxWindows</key>
 	<true/>
 	<key>ClosingTmuxTabKillsTmuxWindows_selection</key>
@@ -1491,7 +1493,7 @@ Reset</string>
 			</array>
 			<key>Keyboard Map</key>
 			<dict>
-				<key>0x74-0x100000-0x11</key>
+				<key>0x74-0x100000-0x11-0x1</key>
 				<dict>
 					<key>Action</key>
 					<integer>27</integer>
