@@ -92,9 +92,11 @@ export function validateReport(text, contract, agentName) {
         ? ['INTEGRATION_PASS']
         : agentName === 'commit-agent'
           ? ['COMMITTED']
-          : ['document-agent', 'formatter-agent'].includes(agentName)
-            ? ['PASS', 'NOT_APPLICABLE']
-            : ['PASS']
+          : agentName === 'item-runner-agent'
+            ? ['PASS']
+            : ['document-agent', 'formatter-agent'].includes(agentName)
+              ? ['PASS', 'NOT_APPLICABLE']
+              : ['PASS']
   if (!expected.includes(report.status))
     return `Status ${report.status} is not valid for ${agentName}`
   for (const key of ['requirements', 'checks', 'files', 'deviations', 'unresolved']) {
@@ -249,14 +251,14 @@ export function validatePriorRecords(contract, cwd, agentName) {
         'formatter-agent',
       ],
       documentation: ['document-agent', 'formatter-agent'],
-      wave: ['wave-planner-agent', 'build-agent', 'code-review-agent', 'formatter-agent'],
+      wave: ['build-agent', 'code-review-agent', 'formatter-agent'],
     }
     const configured = routes[contract.workType]
     if (!configured)
       return 'Commit requires contract.workType: small, normal, large, wave, or documentation'
     if (!contract.expectedSnapshot) return 'Commit requires a current expectedSnapshot'
     const required = [...configured]
-    if (contract.documentRequired !== false && ['small', 'normal'].includes(contract.workType))
+    if (contract.documentRequired !== false && ['small', 'normal', 'wave'].includes(contract.workType))
       required.push('document-agent')
     for (const stage of required) {
       if (!records.some((record) => record.agent === stage))

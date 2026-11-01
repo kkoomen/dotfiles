@@ -24,7 +24,7 @@ This is the last stage that inspects content: nothing writes after it in a given
 - Prioritize surfaces two or more items touch, and contracts an item consumes that another defines.
 - Duplicate helper or type introduced independently in two worktrees is a finding even when both copies are correct: name the item that should own it.
 - Assembled-result coherence: shared registries, exports, migrations, feature flags, config keys, and lockfiles must resolve to one consistent state after all cherry-picks.
-- Every finding names the owning item, exact file and line, the cross-item failure scenario, and the smallest correction. A finding no item owns is a blocking planning defect against the merge plan.
+- Every finding names the owning item, exact file and line, the cross-item failure scenario, and the smallest correction. A finding no item owns is a blocking planning defect in the wave plan.
 - Findings in already-committed content become follow-up routes on that committed content; they are never a reason to revert, amend, or re-quarantine the item. The follow-up commit changes content, so this review re-runs on the updated assembled tree and records a new `treeHash`.
 - The assembled-tree test pass is verification-only. If the assembled tree carries an uncommitted change from that pass or from this review, that is a blocking finding naming its owning item, not something to review around.
 - Severity: `BLOCKING` for broken shared contract, duplicate-ownership ambiguity, or assembled incoherence; `NON_BLOCKING` for cross-item cleanup that does not invalidate the wave.

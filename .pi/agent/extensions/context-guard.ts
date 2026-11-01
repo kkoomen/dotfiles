@@ -357,11 +357,21 @@ export default function (pi: ExtensionAPI) {
       const note = clamped.get(event.toolCallId);
       if (!note) return undefined;
       clamped.delete(event.toolCallId);
+      // A clamp that truncated nothing needs no note: the model already holds the
+      // whole file, and "continue with a higher offset" would send it past the end.
+      const truncated = (event.details as { truncation?: { truncated?: boolean } } | undefined)
+        ?.truncation?.truncated;
+      if (truncated === false) return undefined;
       const text = extractText(event.content);
       const suffix =
         `\n\n[context-guard: limit clamped to ${note.applied} lines (requested ${note.requested}) ` +
         `for ${note.path}. Continue with a higher offset if you need more.]`;
-      return { content: [{ type: "text" as const, text: `${text}${suffix}` }] };
+      return {
+        content: [{ type: "text" as const, text: `${text}${suffix}` }],
+        details: event.details,
+        isError: event.isError,
+        usage: event.usage,
+      };
     }
 
     if (event.toolName !== "subagent") return undefined;
@@ -386,8 +396,10 @@ export default function (pi: ExtensionAPI) {
             : `${config.subagentMaxBytes} B`;
         capNote =
           `\n\n[context-guard: report condensed to ${capLabel} ` +
-          `— findings, unresolved items, requirement states, and files are preserved; verbose ` +
-          `evidence/logs were shortened. Full report: ${recordPath ?? "RUN_RECORD above"}.]`;
+          `— findings, unresolved items, requirement states, and files are preserved; ` +
+          `summary, evidence, and log text were shortened, so a plan or report carried in ` +
+          `\`summary\` is incomplete here. Read the full text from ` +
+          `${recordPath ?? "the RUN_RECORD above"} before acting on it.]`;
       } else {
         let cut = config.subagentMaxBytes;
         while (cut > 0 && byteLength(out.slice(0, cut)) > config.subagentMaxBytes) cut--;
@@ -416,8 +428,20 @@ export default function (pi: ExtensionAPI) {
 
     if (!capNote && !budgetNote) return undefined;
 
-    const result: { content: { type: "text"; text: string }[]; structuredContent?: unknown } = {
+    // `details` and `usage` must be forwarded: the session replaces the result with
+    // exactly what a tool_result handler returns, so omitting them silently drops the
+    // subagent's record path, timings and nested tree, and its usage accounting.
+    const result: {
+      content: { type: "text"; text: string }[];
+      details: unknown;
+      isError: boolean;
+      usage: ToolResultEvent["usage"];
+      structuredContent?: unknown;
+    } = {
       content: [{ type: "text", text: `${out}${recordLine}${capNote}${budgetNote}` }],
+      details: event.details,
+      isError: event.isError,
+      usage: event.usage,
     };
     if (event.structuredContent !== undefined) result.structuredContent = event.structuredContent;
     return result;

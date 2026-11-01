@@ -25,7 +25,7 @@ Verify release readiness, stage only the assigned task, and create the focused c
 - Every check required by the selected route or `AGENTS.md`—such as tests, builds, type checks, formatting, linting, review, or documentation—is current after the last change that could affect it.
 - No blocking finding, unresolved conflict, temporary artifact, debug code, or accidental secret is present in the task diff.
 - The commit contains one roadmap item, feature, fix, or inseparable supporting change—not a collection of unrelated work.
-- For `workType: wave`: the `WAVE_READY` record with every edge classified or pruned, plus this item's own build, delta-gate, formatter, and review evidence. Document and formatter writes invalidate nothing here, because both run before review inside the item's worktree. A content change after review re-runs that review and blocks the commit. The launcher enforces this stage set for a `wave` dispatch, so the planner record must appear in `priorRecords`.
+- For `workType: wave`: this item's own build, delta-gate, formatter, and review evidence. The wave planner record is not part of this dispatch; the plan gate and the DAG were settled before any worktree existed. Document and formatter writes invalidate nothing here, because both run before review inside the item's worktree. A content change after review re-runs that review and blocks the commit. The launcher enforces exactly this stage set for a `wave` dispatch.
 - For `workType: wave`, `INTEGRATION_PASS` is not an item-commit gate: item commits precede the final gates and the integration review, so the orchestrator verifies that record in its readiness check instead.
 - For a follow-up dispatch (`followup/<itemId>` or `assembly-fix/<itemId>` with a base), the build, formatter, and review records for that follow-up worktree, plus the wave's current integration-review record and the finding or conflict ID that opened the route.
 
@@ -38,14 +38,15 @@ Verify release readiness, stage only the assigned task, and create the focused c
 
 ## Wave Mode
 
-When the contract carries `workType: wave` with `worktreePath`, `baseCommit`, and one item ID, this route creates that item's single commit, inside that item's worktree, on branch `item/<itemId>`. This mode and the follow-up mode below are the only exceptions to the single-commit rule; no combined wave commit exists. The orchestrator cherry-picks the commit onto the rolling assembly head immediately, and the slot then takes its next ready item.
+When the contract carries `workType: wave` with `worktreePath`, `baseCommit`, and one item ID, this route creates that item's single commit, inside that item's worktree, on branch `item/<itemId>`. This mode and the follow-up mode below are the only exceptions to the single-commit rule; no combined wave commit exists. The worker returns the hash; the orchestrator cherry-picks it onto the wave branch in the round's pick order, and the next round refills capacity.
 
 - Each commit contains exactly one item's files, apart from a mandatory shared generated artifact that a repository hook regenerates on every commit (the git-cliff `CHANGELOG.md` is the known case). Never combine two items and never commit a checkout holding more than one item's changes.
 - Stage and commit inside `<worktreePath>` only, against `baseCommit`. The builder's working tree is the content, so the commit records exactly what review examined.
 - Do not cherry-pick, assemble, reorder, or amend: the orchestrator owns the rolling assembly of these commits, one at a time, and cherry-pick preserves each message so history keeps one commit per item.
-- Verify before committing: the item's review record with its actual reviewed file list, its delta-gate baseline and post-change results, the formatter record for this worktree, and the `WAVE_READY` record.
+- Verify before committing: the item's review record with its actual reviewed file list, its delta-gate baseline and post-change results, and the formatter record for this worktree.
 - Return `FAIL` naming the missing, stale, or out-of-scope stage. Do not re-review, re-format, repair, or assemble anything.
 - Handoff: item ID, worktree path, `baseCommit`, branch `item/<itemId>`, commit hash, subject, and that worktree's final task-related working-tree status.
+- `documentRequired` is never inferred: the dispatch sets it `true` when the document stage ran and `false` when it was checked and does not apply. An absent value means `true`, so a missing document record fails the commit.
 
 ### Follow-up Mode (post-assembly)
 

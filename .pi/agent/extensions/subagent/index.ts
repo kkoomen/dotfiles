@@ -26,6 +26,10 @@
  *     message details, so the tree stays live while agents run).
  *   - Expanded view shows the agent's final verdict first, then the
  *     full activity trace.
+ *   - Work type and mode on every line: the call and each result show the
+ *     contract's `workType` (small, normal, large, wave, documentation),
+ *     and parallel/chain dispatches list it per task, so a serial dispatch
+ *     is distinguishable from a wave at a glance.
  */
 
 import { spawn } from "node:child_process";
@@ -50,7 +54,7 @@ import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 import { launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot } from "./workflow.mjs";
 
 const MAX_PARALLEL_TASKS = 8;
-const MAX_CONCURRENCY = 4;
+const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
 
@@ -270,6 +274,8 @@ interface NestedSubagentRun {
 	toolCallId: string;
 	agent: string;
 	task: string;
+	/** Work type declared by the nested dispatch's contract, if any. */
+	workType?: string;
 	/** Unix ms when the nested agent was spawned (0 = unknown). */
 	startedAt: number;
 	/** Unix ms when the nested agent finished (undefined = still running). */
@@ -288,6 +294,22 @@ function subagentCallLabel(args: Record<string, any>): { agent: string; task: st
 	if (Array.isArray(args.tasks)) return { agent: `subagent parallel (${args.tasks.length})`, task: "" };
 	if (Array.isArray(args.chain)) return { agent: `subagent chain (${args.chain.length})`, task: "" };
 	return { agent: (args.agent as string) || "subagent", task: (args.task as string) || "" };
+}
+
+/**
+ * Work types declared by a dispatch's contract: one value for a single or
+ * chain step call, the distinct set for a parallel batch.
+ */
+function contractWorkTypes(args: Record<string, any>): string | undefined {
+	const pick = (contract: any): string | undefined =>
+		typeof contract?.workType === "string" ? contract.workType : undefined;
+	const collect = (items: any[]): string | undefined => {
+		const types = [...new Set(items.map((item) => pick(item?.contract)).filter(Boolean))] as string[];
+		return types.length > 0 ? types.join("+") : undefined;
+	};
+	if (Array.isArray(args.tasks)) return collect(args.tasks);
+	if (Array.isArray(args.chain)) return collect(args.chain);
+	return pick(args.contract);
 }
 
 /**
@@ -321,6 +343,7 @@ function buildNestedRuns(messages: Message[]): NestedSubagentRun[] {
 				toolCallId: part.id,
 				agent: label.agent,
 				task: label.task,
+				workType: contractWorkTypes(part.arguments ?? {}),
 				startedAt: msg.timestamp ?? 0,
 				finishedAt: result && result.role === "toolResult" ? result.timestamp : undefined,
 				details: result && result.role === "toolResult" ? (result.details as SubagentDetails | undefined) : undefined,
@@ -344,6 +367,8 @@ interface SingleResult {
 	agent: string;
 	agentSource: "user" | "project" | "unknown";
 	task: string;
+	/** Work type from the dispatch contract: small, normal, large, wave, or documentation. */
+	workType?: string;
 	exitCode: number;
 	messages: Message[];
 	stderr: string;
@@ -562,6 +587,7 @@ async function runSingleAgent(
 		agent: agentName,
 		agentSource: agent.source,
 		task,
+		workType: contract?.workType,
 		exitCode: 0,
 		messages: [],
 		stderr: "",
@@ -780,6 +806,14 @@ const ContractSchema = Type.Object({
 	expectedSnapshot: Type.Optional(Type.String()),
 	workType: Type.Optional(StringEnum(["small", "normal", "large", "wave", "documentation"] as const)),
 	documentRequired: Type.Optional(Type.Boolean()),
+	// Wave fields, documented in agents/HANDOFF.md. Declared here because the schema is the
+	// only description of the contract a dispatching agent sees: an undeclared field is one a
+	// provider may drop before it reaches this launcher.
+	waveId: Type.Optional(Type.String()),
+	round: Type.Optional(Type.Number()),
+	itemId: Type.Optional(Type.String()),
+	worktreePath: Type.Optional(Type.String()),
+	baseCommit: Type.Optional(Type.String()),
 });
 
 const TaskItem = Type.Object({
@@ -1129,6 +1163,7 @@ export default function (pi: ExtensionAPI) {
 						theme.fg("muted", `${i + 1}.`) +
 						" " +
 						theme.fg("accent", step.agent) +
+						(step.contract?.workType ? theme.fg("warning", ` ${step.contract.workType}`) : "") +
 						theme.fg("dim", ` ${preview}`);
 				}
 				if (args.chain.length > 3) text += `\n  ${theme.fg("muted", `... +${args.chain.length - 3} more`)}`;
@@ -1141,7 +1176,7 @@ export default function (pi: ExtensionAPI) {
 					theme.fg("muted", ` [${scope}]`);
 				for (const t of args.tasks.slice(0, 3)) {
 					const preview = t.task.length > 40 ? `${t.task.slice(0, 40)}...` : t.task;
-					text += `\n  ${theme.fg("accent", t.agent)}${theme.fg("dim", ` ${preview}`)}`;
+					text += `\n  ${theme.fg("accent", t.agent)}${t.contract?.workType ? theme.fg("warning", ` ${t.contract.workType}`) : ""}${theme.fg("dim", ` ${preview}`)}`;
 				}
 				if (args.tasks.length > 3) text += `\n  ${theme.fg("muted", `... +${args.tasks.length - 3} more`)}`;
 				return new Text(text, 0, 0);
@@ -1151,6 +1186,7 @@ export default function (pi: ExtensionAPI) {
 			let text =
 				theme.fg("toolTitle", theme.bold("subagent ")) +
 				theme.fg("accent", agentName) +
+				(args.contract?.workType ? theme.fg("warning", ` · ${args.contract.workType}`) : "") +
 				theme.fg("muted", ` [${scope}]`);
 			text += `\n  ${theme.fg("dim", preview)}`;
 			return new Text(text, 0, 0);
@@ -1181,7 +1217,8 @@ export default function (pi: ExtensionAPI) {
 
 			const nestedRunLabel = (run: NestedSubagentRun | undefined): string | null => {
 				const timing = run ? getNestedRunTiming(run) : null;
-				return timing ? timing.label : null;
+				const parts = [timing?.label, run?.workType].filter(Boolean);
+				return parts.length > 0 ? parts.join(" · ") : null;
 			};
 
 			const renderDisplayItems = (
@@ -1222,6 +1259,7 @@ export default function (pi: ExtensionAPI) {
 					out += `${indent}${theme.fg("muted", "→ ")}`;
 					if (label) out += `${theme.fg("dim", label)} · `;
 					out += `${theme.fg("accent", run.agent)}`;
+					if (run.workType) out += theme.fg("warning", ` · ${run.workType}`);
 					if (run.task) out += `${theme.fg("dim", ` · ${preview}`)}`;
 					out += "\n";
 					if (depth >= NESTED_MAX_DEPTH) continue;
@@ -1289,6 +1327,7 @@ export default function (pi: ExtensionAPI) {
 					// Expanded view: the verdict first, then the activity trace.
 					const container = new Container();
 					let header = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
+					if (r.workType) header += theme.fg("warning", ` · ${r.workType}`);
 					if (isError && r.stopReason) header += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 					if (timing) header += ` ${theme.fg("dim", timing.label)}`;
 					container.addChild(new Text(header, 0, 0));
@@ -1323,6 +1362,7 @@ export default function (pi: ExtensionAPI) {
 
 				// Collapsed view: the streaming summary (last items) plus timing.
 				let text = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
+				if (r.workType) text += theme.fg("warning", ` · ${r.workType}`);
 				if (isError && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 				if (isError && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
 				else if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
@@ -1378,7 +1418,9 @@ export default function (pi: ExtensionAPI) {
 						container.addChild(new Spacer(1));
 						container.addChild(
 							new Text(
-								`${theme.fg("muted", `─── Step ${r.step}: `) + theme.fg("accent", r.agent)} ${rIcon}` +
+								`${theme.fg("muted", `─── Step ${r.step}: `) + theme.fg("accent", r.agent)}` +
+									(r.workType ? theme.fg("warning", ` · ${r.workType}`) : "") +
+									` ${rIcon}` +
 									(timing ? ` ${theme.fg("dim", timing.label)}` : ""),
 								0,
 								0,
@@ -1423,7 +1465,7 @@ export default function (pi: ExtensionAPI) {
 					const rIcon = r.exitCode === 0 ? theme.fg("success", "✓") : theme.fg("error", "✗");
 					const displayItems = getDisplayItems(r.messages);
 					const timing = getAgentTiming(r);
-					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)} ${rIcon}`;
+					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)}${r.workType ? theme.fg("warning", ` · ${r.workType}`) : ""} ${rIcon}`;
 					if (timing) text += ` ${theme.fg("dim", timing.label)}`;
 					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5, getNestedRunMap(r))}`;
@@ -1470,7 +1512,9 @@ export default function (pi: ExtensionAPI) {
 						container.addChild(new Spacer(1));
 						container.addChild(
 							new Text(
-								`${theme.fg("muted", "─── ") + theme.fg("accent", r.agent)} ${rIcon}` +
+								`${theme.fg("muted", "─── ") + theme.fg("accent", r.agent)}` +
+									(r.workType ? theme.fg("warning", ` · ${r.workType}`) : "") +
+									` ${rIcon}` +
 									(timing ? ` ${theme.fg("dim", timing.label)}` : ""),
 								0,
 								0,
@@ -1516,7 +1560,7 @@ export default function (pi: ExtensionAPI) {
 								: theme.fg("success", "✓");
 					const displayItems = getDisplayItems(r.messages);
 					const timing = getAgentTiming(r);
-					text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)} ${rIcon}`;
+					text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)}${r.workType ? theme.fg("warning", ` · ${r.workType}`) : ""} ${rIcon}`;
 					if (timing) text += ` ${theme.fg("dim", timing.label)}`;
 					if (displayItems.length === 0)
 						text += `\n${theme.fg("muted", r.exitCode === -1 ? "(running...)" : "(no output)")}`;

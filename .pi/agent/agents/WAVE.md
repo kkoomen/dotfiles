@@ -1,13 +1,13 @@
 # Wave route
 
-Read this before dispatching any wave stage. `AGENTS.md` holds the wave invariants and `orchestrator-agent.md` holds the classification and edge taxonomy; this file owns the scheduler, its state, and its repair paths.
+Read this before dispatching any wave round. `AGENTS.md` holds the wave invariants and `orchestrator-agent.md` holds the classification and edge taxonomy; this file owns the round scheduler, its state, and its repair paths.
 
-A wave is a **slot scheduler**, not a fixed batch. The number of roadmap items in scope never bounds it and never forces a split into sequential waves: the orchestrator keeps N slots busy and refills a slot from the ready queue the moment that slot's item commits, until the queue is empty. A 40-item roadmap and a 3-item roadmap run the same way, and a slow item never idles the other slots.
+A wave is a **worker pool**, not a stage pipeline and not a fixed batch. Each round dispatches up to N `item-runner-agent` workers, one roadmap item each; every worker runs its item's whole chain inside its own worktree and returns one commit. The orchestrator cherry-picks those commits onto the wave branch, deletes the worktrees, and starts the next round from the new head. A 40-item roadmap and a 3-item roadmap run the same way, and a slow item never blocks a later round.
 
 ## Required context
 
 - Own `.pi/state/<waveId>.json` in addition to the per-stage task state, and use one `taskId` for the entire wave — the wave ID itself — passed unchanged to every dispatch of every item and stage, because the launcher rejects any `priorRecords` entry whose taskId differs from the dispatching contract.
-- Record in state: the scope (version, track, roadmap index), the wave branch and assembly worktree, the per-workspace baseline on `<waveBase>`, and `slots[]` — for each slot its current `itemId`, `worktreePath`, branch `item/<itemId>`, its own `baseCommit`, its start time, and its stage. Also record every item's roadmap file, workspace, commit hash, repair-round count, record paths, and quarantine state; the pruned DAG with edge kinds and prune reasons; per-item path attribution (including documentation paths) and blast radius; any open follow-up (branch, base, commit, repair-round count); and the current integration-review record (`status`, `treeHash`, `recordedAt`, covered items).
+- Record in state: the scope (version, track, roadmap index), the wave branch and assembly worktree, the per-workspace baseline on `<waveBase>`, and `rounds[]` — for each round its `hand` (the wave branch head at dispatch), its ordered item list, and each item's `itemId`, `worktreePath`, branch `item/<itemId>`, `baseCommit`, start time, and outcome. Also record every item's roadmap file, workspace, commit hash, repair-round count, record paths, and quarantine state; the pruned DAG with edge kinds and prune reasons; per-item path attribution (including documentation paths) and blast radius; any open follow-up (branch, base, commit, repair-round count); and the current integration-review record (`status`, `treeHash`, `recordedAt`, covered items).
 - `itemId` must be a valid Git ref component and unique inside the wave. Namespace it by track when two tracks can produce the same file name — `server/01-handler-guards`, never a bare `01-handler-guards` — because it becomes both a branch name and a wave-state key.
 - Pass `cwd` on every wave dispatch, equal to that stage's `worktreePath`. The contract field tells the agent where to work; the launcher's `cwd` argument is what snapshots, review digests, check-log paths, and the process working directory actually use. Never set one without the other.
 - Never resolve a conflict, never amend, and never merge content on an item's behalf. The history operations you perform are the serialized cherry-pick of an already-reviewed item commit onto the wave branch, and the post-assembly follow-up cherry-picks of the Follow-up Route. A cherry-pick conflict stops that cherry-pick and opens the Follow-up Route.
@@ -15,54 +15,61 @@ A wave is a **slot scheduler**, not a fixed batch. The number of roadmap items i
 - Snapshots are per scope: an item's worktree snapshot guards only that item's stages; the assembled tree's snapshot guards the final gates. Never compare a worktree snapshot to an assembled-tree record.
 - If the repository does not ignore `.pi/worktrees/`, place worktrees outside the repo and record that path.
 
-## Scheduler
+## Rounds
 
-- **Slots.** `N` defaults to 4 and may be raised to at most 8, because one `subagent` parallel call accepts at most 8 tasks and runs 4 concurrently. Set N once at the start, record it, and keep it for the run. The roadmap is never capped, split by count, or refused for being large.
+- **N.** `N` is 8, set once at the start and recorded in state. It is the only concurrency number: the launcher's per-call task limit and worker limit must both equal it, and a wave never caps, splits, or refuses scope because the roadmap is large.
+- **Capacity.** `N` bounds one round, not the machine. Each worker spawns its own stage processes, so `N` = 8 means up to 8 worker processes plus 8 nested stage processes at once, plus one bootstrap install per worktree. Confirm the host and the provider quota tolerate that before the first round; if they do not, lower `N` and both launcher limits with it. Never lower it mid-wave.
+- **Planner output.** The planner's deliverable is its `summary`, which is exactly the field `context-guard` shortens first when a report is large. Read the planner's `RUN_RECORD` for the full `Items`, `Edges`, `Pruned edges`, `Ready queue`, and `Wave constraints` blocks; treat the injected preview as a pointer, never as the plan.
 - **Wave base and assembly worktree.** Before any worktree exists, fix `<waveBase>` as `git rev-parse HEAD` on a clean tree and record it. Create the one assembly worktree with `git worktree add -b <waveId> <assemblyPath> <waveBase>` and run every cherry-pick, the final gates, and the integration review there, never in the user's main checkout, which may hold uncommitted work. Record the per-workspace baseline suite result on `<waveBase>`: that is the zero point the final gate compares against.
-- **Ready queue.** All `[ ]` items in the approved scope, minus items that are not ready. Re-evaluate the predicate on every slot refill — never freeze the queue at the start.
-- **Readiness predicate.** An item is ready when every one of these holds:
-  - No `contract` edge from a producer whose commit is not yet assembled. A consumer starts only after the defining item's commit is on the wave branch, because it needs that code, schema, or file format to exist. An interface freeze records the contract for planning; it does not let the consumer start early, and it never substitutes for the producer's commit.
-  - No `collision` edge with an item that is currently in flight. A `collision` with an already-assembled item does not block: the new item branches from a head that already contains that change, so the same file is edited forward, not contested.
-  - No `evidence` edge with an in-flight item that shares a single mutable verification resource — one emulator, one shared database, one fixed port. A merely shared suite runner does not block, because each item runs it in its own worktree.
+- **Ready queue.** Every in-scope item not yet committed, not quarantined, and not blocked. Recompute it at every round; never freeze it at the start.
+- **Readiness predicate.** An item is ready when all of these hold:
+  - No `contract` edge from a producer whose commit is not yet on the wave branch. A consumer needs the defining item's code, schema, or format to exist, so it starts in a round that begins after that commit is assembled. An interface freeze records the contract for planning; it never lets the consumer start early.
+  - No `collision` edge with an item already picked for the current round. A `collision` with an already-assembled item does not block: the next round branches from a head that already contains that change, so the same file is edited forward, not contested.
+  - No `evidence` edge with an item already picked for the current round that needs the same single mutable verification resource — one emulator, one shared database, one fixed port. A merely shared suite runner does not block, because each worker runs it in its own worktree.
   - A `runtime` edge never blocks: it orders rollout and reporting only.
-- **Slot start.** In this order, and never partially:
-  1. `baseCommit` = the wave branch head right now (`git rev-parse <waveId>`). Every item gets its own base; there is no shared item base.
-  2. `git worktree add -b item/<itemId> <path> <baseCommit>`, with the branch name recorded in state.
-  3. Record the item's baseline at that `baseCommit` inside the worktree — its own delta gate zero point, which is not the wave-base baseline.
-  4. Dispatch the item route inside the slot, with `cwd` set to that worktree.
-- **Stage-aligned batches.** Keep the slots in lockstep by stage rather than by item. For each stage, make **one** `subagent` call whose `tasks[]` holds one entry per slot that needs that stage, then judge each result separately. Dispatching slot 1's build, waiting, then slot 2's build is a scheduling defect: it serializes the wave and defeats the whole route. A one-entry `tasks[]` is correct only when exactly one slot is active. A slot refilled mid-run joins the next round at the earliest stage it still needs, usually its plan validation or build. A slot must never be blocked because another slot's item is at a different stage.
-- **Concurrency floor.** While the ready queue holds at least N ready items, all N slots must be non-idle and their current-stage dispatches must be in flight together. Record the batch size for every round in state. A round whose batch is smaller than the number of active slots is a defect to correct immediately, not a slow run.
-- **Refill.** When an item's commit is assembled onto the wave branch, remove that item's worktree, mark the slot idle, and immediately start the highest-priority ready item. Never wait for a round to finish. Priority is roadmap order unless an edge or a collision says otherwise.
-- **Rolling assembly.** A commit is cherry-picked the moment it exists, one at a time, serialized. There is no assembly phase, no layer, and no global merge order: order is emergent from readiness. This is also why a repository hook that regenerates a shared artifact on every commit no longer conflicts — each item regenerates from a head that already contains every earlier item's entry — so the previous N-1 assembly-fix budget does not apply. Report any residual conflict cost instead of budgeting for it.
-- **Drain.** The run ends when the ready queue is empty and every slot is idle, or when every item left is blocked or quarantined. Then run the final gates below. If anything is blocked, report it explicitly instead of reporting readiness.
+- **Pick order.** Order the ready set by blast radius descending — largest change first — then by roadmap order. Largest-first keeps the round's slowest item from starting late, which is the only lever that shortens the barrier.
+- **Round start.** In this order, and never partially:
+  1. Read `hand` = the wave branch head.
+  2. Walk the ready set against `hand` in pick order, admitting an item only while it has no `collision` and no single-mutable-resource `evidence` edge to an item already admitted to this round, and stop at `N` items. Admission must be incremental: computing the set once and taking the first `N` would admit two colliding items, because those two predicates are evaluated against what the round has already taken.
+  3. Create one worktree per picked item with `git worktree add -b item/<itemId> <path> <hand>` and record the branch in state. Every item in the round shares `hand` as its `baseCommit`. A fresh worktree has no `node_modules`, so run the repository's declared bootstrap in it before dispatch — `pnpm install --frozen-lockfile --prefer-offline` for a pnpm workspace — serially, and record its exit status. A worktree whose bootstrap fails is not dispatched; without this step every gate fails for the wrong reason and the builder misreads a missing dependency as a red baseline.
+  4. Dispatch **one** `subagent` call whose `tasks[]` holds one `item-runner-agent` entry per picked item, each with `cwd` set to that item's worktree and a contract carrying the wave `taskId`, `itemId`, `round`, `worktreePath`, and `baseCommit`.
+- **Barrier.** That call returns only when every worker in it has returned, so a round is as long as its slowest item and a worker that finishes early waits for the round. Do not shrink `N` to soften this, do not dispatch workers one at a time, and do not poll for partial results: there are none. Shorten the barrier with pick order instead. A round in which any worker failed reports the whole call as an error; treat that flag as informational and decide each item's outcome from its own record. One failed item is not a failed round.
+- **Assembly, then refill.** After the call returns, cherry-pick every returned commit onto the wave branch one at a time in pick order, delete each worktree as its commit lands, record each head, then start the next round immediately. Never wait for a slow item across rounds, and never hold an unfinished round open.
+- **Drain.** Every round runs until the ready queue holds no admissible item. Then declare the queue drained only when no round is in flight, and run the final gates. If anything is blocked or quarantined, report it explicitly instead of reporting readiness.
 
-## Slot route
+## Worker route
+
+Each `item-runner-agent` owns its item's whole chain, dispatched serially inside its own worktree with `cwd` set to that worktree:
 
 ```
-architect-large-agent   validate the item's existing plan   workType: large
-build-agent             implement + item tests + delta gate  workType: wave
-document-agent          only when triggered                   workType: wave
-formatter-agent         mechanical formatting and lint       workType: wave
-code-review-agent       item scope, working tree vs baseCommit
-commit-agent            one commit on item/<itemId>, then assemble
+architect-large-agent   validate the item's existing plan      workType: large
+build-agent             implement + item tests + delta gate     workType: wave
+document-agent          only when triggered                      workType: wave
+formatter-agent         mechanical formatting and lint          workType: wave
+code-review-agent       item scope, working tree vs baseCommit  workType: wave
+commit-agent            one commit on item/<itemId>             workType: wave
 ```
 
-- **Architect.** Validate that the item's existing `# Plan` is complete and implementable and return `PLAN_READY`; it rewrites the plan only when the plan is genuinely unimplementable. It may edit only that item's own roadmap feature file. An `INTERVIEW_ROUND` pauses the whole run, because a backfill is not allowed to turn an open product decision into a silent assumption; relay the single question and resume.
-- **Build.** Re-read the item's baseline, run the item's own tests plus the delta gate inside the worktree, and never commit: review reads the working tree. Build agents never merge, rebase, cherry-pick, push, or clean up worktrees.
-- **Document and formatter.** Both run before review, inside the item's worktree, so the documentation and the formatting land in the item's own commit. The document dispatch may edit only that item's attributed paths. Nothing documents or formats after assembly.
-- **Review.** Diff the working tree against that item's `baseCommit`, including untracked files; a commit-range diff would be empty.
-- **Commit.** One `commit-agent` per item with `workType: wave`, that worktree's `expectedSnapshot`, and that worktree's records; `documentRequired` is decided per item, and the wave planner record is always in `priorRecords`. The dispatch carries exactly one item's files apart from mandatory shared generated artifacts.
-- **Slot independence.** Quarantine, failure, or a blocked item frees its slot; the scheduler never waits for that item before admitting the next ready one.
+`item-runner-agent.md` owns the per-stage rules, the repair loop, and its handoff. From here the invariants are:
+
+- **Serial inside a worker.** Stages run one at a time because each consumes the previous one's output. Parallelism comes from the other workers, never from a worker's own stages.
+- **Same taskId, same cwd.** Every stage the worker dispatches carries the wave `taskId` and `cwd` = its worktree, or the launcher rejects its records and resolves its snapshots against the wrong tree.
+- **No history.** The worker commits through `commit-agent` and returns the hash; it never cherry-picks, merges, or amends, and never writes state.
+- **Repair stays inside the worktree.** A review or gate failure returns to build, then re-runs formatter and review, capped at three failed rounds before the orchestrator quarantines the item.
+- **`documentRequired` is always explicit.** The commit dispatch sets it `true` when the document stage ran and `false` when the item was checked and has no documentation trigger, because the launcher treats an absent value as `true`.
+- **No per-item `test-agent`.** A wave item is classified as a large feature, but its independent test stage is deliberately replaced by the per-workspace verification-only suite on the assembled head: the same surface, once per workspace instead of once per item. An item that genuinely needs a test-design pass must say so in its plan; do not add the stage back per item.
+- **Worker independence.** A worker that fails returns immediately and frees the next round's capacity; the scheduler never waits for it and never shrinks N because one item is slow.
 
 ## Assembly
 
-- Cherry-pick exactly one commit at a time onto the wave branch, inside the assembly worktree, serialized against every other slot. Announce the item in state before the cherry-pick and record the resulting head after it.
-- A conflict is never resolved in an item worktree and never by amending an item commit. It opens the Follow-up Route at the wave branch head, and that item's slot stays busy with the repair until the follow-up commit is assembled.
+- After every round, cherry-pick exactly one commit at a time onto the wave branch, in the round's pick order, inside the assembly worktree, serialized against every other cherry-pick. Announce the item in state before the cherry-pick and record the resulting head after it.
+- A conflict on a path the planner listed as a mandatory shared artifact is mechanical, not a content conflict: every item in the round regenerated it from the same base, so keep the wave-branch copy (`git checkout --ours <path>`, `git add <path>`), continue the cherry-pick, and regenerate that artifact in the assembly worktree once, before the final gates, with the repository's declared command. If regeneration changes it, the orchestrator lands that as one assembly-artifact commit covering the whole wave. It carries no item's content and needs no per-item review, because the generator derives it from the commit messages already on the branch. This is the only history write outside the Follow-up Route, and it happens before the integration review so that review's `treeHash` covers it.
+- Any other conflict is never resolved in an item worktree and never by amending an item commit. It opens the Follow-up Route at the wave branch head, and the repair runs outside the worker pool, so it consumes no round capacity until the follow-up commit is assembled.
 - A cherry-pick that merges content cleanly is not a validation event: the item's own review and gates already ran against its base. Content changed by a follow-up, however, invalidates that item's review for the touched files.
 
 ## Final gates
 
-Run only when the queue is drained and every slot is idle.
+Run only when the queue is drained and no round is in flight.
 
 - **Per-workspace suite.** One `test-agent` per workspace, not per item, on the assembled head with `cwd` set to the assembly worktree, verification-only: it may not add or change tests and may not fix production code. Compare against the per-workspace baseline recorded on `<waveBase>`; new failures fail the run, pre-existing failures are the zero point and are recorded, not fixed. The owner of a failure is the item whose recorded blast radius contains the failing test file or the paths it exercises; a failure no item owns returns to `wave-planner-agent`.
 - **Integration review.** `integration-review-agent` reviews cross-item surfaces only, with `cwd` set to the assembly worktree, and records the assembled `treeHash` with `recordedAt`. It is the last stage that inspects content, and nothing writes after it.
@@ -75,9 +82,9 @@ This is the only legal repair path once an item's commit is assembled. It applie
 - Base: the wave branch head at the last good assembly commit. Create a fresh worktree there and pass its path as `cwd` on every dispatch in this route:
   - `git worktree add -b followup/<itemId> <path> <base>` for a gate failure or integration finding.
   - `git worktree add -b assembly-fix/<itemId> <path> <base>` for a cherry-pick conflict.
-  Record its path, branch, and base in wave state, and hold the owning item's slot for it.
+  Record its path, branch, and base in wave state. The item occupies no worker capacity while it is repaired; the next round fills that capacity normally.
 - `build-agent` repairs in that worktree. `formatter-agent` and `code-review-agent` run there too, scoped to that item.
-- `commit-agent` creates exactly one commit on the branch that worktree was created with. This is a follow-up commit, not an item commit, and it is an explicit carve-out from the one-commit-per-item and one-item's-files rules.
+- `commit-agent` creates exactly one commit on the branch that worktree was created with, dispatched with `workType: wave` and the launcher's wave stage set: build, review, formatter. It also needs an explicit `documentRequired` — `true` when the follow-up re-ran the document stage, `false` when documented behavior did not change — because the launcher treats an absent value as `true` and would otherwise fail the commit on a missing document record. This is a follow-up commit, not an item commit, and it is an explicit carve-out from the one-commit-per-item and one-item's-files rules.
 - Cherry-pick that follow-up commit onto the wave branch. A conflict on a mandatory shared generated artifact is resolved the same way and resumes the interrupted cherry-pick afterwards.
 - The integration review re-runs on the updated assembled tree and records a new `treeHash`.
 - A wave with an open follow-up is not reported ready: the readiness report requires a current `INTEGRATION_PASS` for the final `treeHash`.
@@ -92,19 +99,19 @@ Cluster failures by root cause before dispatching any repair. One dispatch per r
 - Assembled-tree test failure: use the ownership rule in *Final gates* rather than waiting for the integration review.
 - Genuine spec conflict between items: `wave-planner-agent`, then the user through one `INTERVIEW_ROUND` question.
 - Pre-existing red baseline: nobody. It is the delta gate's zero point and must be recorded, not fixed.
-- Environment or tooling problem: `wave-planner-agent` for scheduling; move the item to the back of the ready queue and keep the other slots running.
+- Environment or tooling problem: `wave-planner-agent` for scheduling; move the item to the back of the ready queue and keep the other workers running.
 
 Repairs are capped per item: the item is quarantined after the third failed repair round.
 
-Quarantine is pre-assembly only. An item may be quarantined at any point before its commit exists; record it `QUARANTINED` in wave state, keep its branch and all its records, free its slot, and report it as an explicit follow-up with the failing evidence. Quarantine is transitive: an item that depends on a quarantined item through a `contract` edge is never ready, and must be reported as blocked rather than silently dropped. A `collision` or `evidence` edge does not propagate quarantine. Once an item's commit is assembled it is never quarantined and never reverted: a failure there becomes the Follow-up Route, recorded as merged and blocked with follow-up. Never let a specialist declare quarantine, and never record one item as both committed and quarantined. Report every quarantine as it happens; it needs no user confirmation.
+Quarantine is pre-assembly only. An item may be quarantined at any point before its commit exists; record it `QUARANTINED` in wave state, keep its branch and all its records, and report it as an explicit follow-up with the failing evidence. Quarantine is transitive: an item that depends on a quarantined item through a `contract` edge is never ready, and must be reported as blocked rather than silently dropped. A `collision` or `evidence` edge does not propagate quarantine. Once an item's commit is assembled it is never quarantined and never reverted: a failure there becomes the Follow-up Route, recorded as merged and blocked with follow-up. Never let a specialist declare quarantine, and never record one item as both committed and quarantined. Report every quarantine as it happens; it needs no user confirmation.
 
 ## Approval scope
 
-The Plan Confirmation Gate is asked **once per run, for the scope**, not once per item. Present the roadmap scope, the ready queue, N, the expected serialization from `contract`, `collision`, and `evidence` edges, and any item that cannot become ready. Approval of that batch authorizes every item admitted to a slot afterwards from the same recorded scope, which is what makes backfill possible; without it the run would stop for approval on every refill.
+The Plan Confirmation Gate is asked **once per run, for the scope**, not once per item. Present the roadmap scope, the ready queue, N, the expected serialization from `contract`, `collision`, and `evidence` edges, and any item that cannot become ready. Approval of that scope authorizes every item admitted to a later round from it, which is what makes backfill possible; without it the run would stop for approval on every round.
 
 - A backfilled item never re-opens the gate on its own.
 - Re-open the gate only for a new item outside the approved scope, a plan that must change user-visible behavior beyond its roadmap file, or a genuine `INTERVIEW_ROUND` decision.
-- Record the approval wording in state before the first slot starts.
+- Record the approval wording in state before the first round starts.
 
 ## Invalidation
 
@@ -116,14 +123,15 @@ The readiness report is blocked until a current `INTEGRATION_PASS` record exists
 
 ## Prohibited in a wave
 
-- Do not cap, split, or refuse a wave because the roadmap is large. The slot count is fixed; the queue is not.
-- Do not wait for a slow item before refilling an idle slot.
-- Do not resolve a cherry-pick conflict yourself, amend a commit, or reorder assembly by a precomputed merge order; order is emergent, and a conflict opens the Follow-up Route for the owning `build-agent`.
+- Do not cap, split, or refuse a wave because the roadmap is large. `N` bounds one round; it never bounds scope.
+- Do not dispatch workers one at a time, poll a running round for partial results, or start a round while another is in flight.
+- Do not resolve a cherry-pick conflict yourself except for the mechanical mandatory-shared-artifact resolution defined in *Assembly*; never amend a commit, never reorder assembly by a precomputed merge order, and send every other conflict to the Follow-up Route for the owning `build-agent`.
 - Do not execute a post-assembly gate yourself; dispatch it to `test-agent` or `build-agent`.
 - Do not let any stage write on the assembled tree after the integration review.
 - Do not quarantine an item after its commit is assembled, and do not revert committed content.
-- Do not start an item whose `contract` producer is unassembled, whose paths collide with an in-flight item, or whose single mutable verification resource is already held.
+- Do not start an item whose `contract` producer is unassembled, whose paths collide with an item already admitted to its round, or whose single mutable verification resource is already held.
 - Do not let a blocked or quarantined item vanish from the report, and do not quarantine work a specialist has not failed.
 - Do not substitute the integration review for per-item review, or per-item review for the integration review.
+- Do not dispatch an `item-runner-agent` without `cwd` set to its worktree and the shared wave `taskId` in its contract.
 - Do not compare a worktree snapshot with an assembled-tree snapshot, and do not replace a snapshot to silence the guard.
 - Do not dispatch a wave stage without `cwd` set to that stage's worktree.
