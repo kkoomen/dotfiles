@@ -30,6 +30,11 @@
  *     contract's `workType` (small, normal, large, wave, documentation),
  *     and parallel/chain dispatches list it per task, so a serial dispatch
  *     is distinguishable from a wave at a glance.
+ *   - Live wave worker table: while a wave dispatch is running, a widget above
+ *     the editor lists every worker with its roadmap item, current stage,
+ *     elapsed time, stage progress, and tokens, plus assembled-item totals from
+ *     the orchestrator's wave state. Drawn by the dispatching process, because
+ *     the wave itself runs in a child without a UI. Display only.
  */
 
 import { spawn } from "node:child_process";
@@ -49,7 +54,7 @@ import {
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
-import { Type } from "typebox";
+import { Type, type Static } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 import { launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot } from "./workflow.mjs";
 
@@ -116,6 +121,446 @@ function stopRunTimer() {
 		}
 	}
 	runTimerStart = 0;
+}
+
+/**
+ * Live wave worker table.
+ *
+ * A wave's `parallel` call runs inside a headless child process, so `ui.setWidget` there
+ * reaches no screen. The table is drawn instead by the process that dispatched that child:
+ * nested subagent events already carry the child's live dispatch details upward, and this
+ * block flattens them into one row per roadmap item. Display only — it never writes state,
+ * never reorders a dispatch, and has no effect on validation.
+ */
+const WAVE_WIDGET = "wave-workers";
+
+/** Route length used for the per-item stage dots; a repair round repeats stages. */
+const WAVE_STAGE_TOTAL = 6;
+
+/** Item outcomes that mean the commit exists on the wave branch. */
+const WAVE_ASSEMBLED = new Set(["assembled", "committed", "merged", "done", "complete", "completed"]);
+
+type WaveRowState = "queued" | "running" | "waiting" | "done" | "failed";
+
+const WAVE_GLYPH: Record<WaveRowState, string> = {
+	queued: "◌",
+	running: "▶",
+	waiting: "⏸",
+	done: "✓",
+	failed: "✗",
+};
+
+const WAVE_COLOR: Record<WaveRowState, WaveColor> = {
+	queued: "dim",
+	running: "accent",
+	waiting: "muted",
+	done: "success",
+	failed: "error",
+};
+
+interface WaveRow {
+	itemId: string;
+	state: WaveRowState;
+	stage?: string;
+	elapsedMs: number;
+	stagesDone: number;
+	retries: number;
+	tokens: number;
+}
+
+interface WaveView {
+	waveId?: string;
+	rows: WaveRow[];
+	startedAt: number;
+	cost: number;
+	active: boolean;
+}
+
+interface WaveTotals {
+	assembled: number;
+	total: number;
+}
+
+type WaveTheme = ExtensionContext["ui"]["theme"];
+/** Exactly the theme token union, so a renamed or invented colour fails the typecheck. */
+type WaveColor = Parameters<WaveTheme["fg"]>[0];
+
+/** A parallel dispatch is a wave when two or more of its tasks carry `workType: wave`. */
+function isWaveDispatch(details: SubagentDetails | undefined): boolean {
+	if (!details || details.mode !== "parallel" || details.results.length < 2) return false;
+	return details.results.filter((result) => result.workType === "wave").length >= 2;
+}
+
+/**
+ * Find the live wave dispatch inside a result tree.
+ *
+ * The dispatcher sees the wave two levels down: itself, the orchestrator it called, and the
+ * orchestrator's parallel call. Bounded depth keeps a pathological tree from being walked.
+ */
+function findWaveDispatch(details: SubagentDetails | undefined, depth = 3): SubagentDetails | undefined {
+	if (!details || depth < 0) return undefined;
+	if (isWaveDispatch(details)) return details;
+	for (const result of details.results ?? []) {
+		// A liveDetails payload arrives deserialized from a child; never assume the arrays are there.
+		for (const nested of result.nestedSubagents ?? []) {
+			const found = findWaveDispatch(nested.liveDetails, depth - 1);
+			if (found) return found;
+		}
+	}
+	return undefined;
+}
+
+function shortStage(agent: string): string {
+	return agent.endsWith("-agent") ? agent.slice(0, -6) : agent;
+}
+
+function clipRight(text: string, max: number): string {
+	return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
+}
+
+/** Keep the distinguishing tail of an item id: `server/07-handler-guards` loses its namespace first. */
+function clipLeft(text: string, max: number): string {
+	if (text.length <= max) return text;
+	if (max <= 1) return "…";
+	return `…${text.slice(text.length - (max - 1))}`;
+}
+
+function padRight(text: string, width: number): string {
+	return text.length >= width ? text.slice(0, width) : text + " ".repeat(width - text.length);
+}
+
+/** Duration in the table's own units: `0m41s`, `42m12s`, `1h04m`. Never wider than six cells. */
+function formatElapsed(ms: number): string {
+	const totalSec = Math.max(0, Math.floor(ms / 1000));
+	if (totalSec >= 3600) {
+		return `${Math.floor(totalSec / 3600)}h${String(Math.floor((totalSec % 3600) / 60)).padStart(2, "0")}m`;
+	}
+	return `${Math.floor(totalSec / 60)}m${String(totalSec % 60).padStart(2, "0")}s`;
+}
+
+function padLeft(text: string, width: number): string {
+	return text.length >= width ? text.slice(text.length - width) : " ".repeat(width - text.length) + text;
+}
+
+function tokensOf(usage: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number } | undefined): number {
+	if (!usage) return 0;
+	return (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+}
+
+/**
+ * Flatten the live wave dispatch into rows.
+ *
+ * `waiting` is the state the table exists to expose: the round is a barrier, so an item that
+ * returned early is idle until the slowest item finishes.
+ */
+function waveViewFrom(details: SubagentDetails | undefined, now: number): WaveView | undefined {
+	const wave = findWaveDispatch(details);
+	if (!wave) return undefined;
+	const active = wave.results.some((result) => result.startedAt > 0 && result.finishedAt === undefined);
+	const rows: WaveRow[] = [];
+	let startedAt = now;
+	let cost = 0;
+	for (const result of wave.results) {
+		cost += result.usage?.cost ?? 0;
+		const stages = result.nestedSubagents ?? [];
+		const current = stages.at(-1);
+		const stagesDone = stages.filter((stage) => stage.finishedAt !== undefined).length;
+		const retries = Math.max(0, stages.filter((stage) => stage.agent === "build-agent").length - 1);
+		const failed = result.finishedAt !== undefined && isFailedResult(result);
+		let state: WaveRowState = "queued";
+		let elapsedMs = 0;
+		if (result.startedAt > 0) {
+			startedAt = Math.min(startedAt, result.startedAt);
+			if (failed) {
+				state = "failed";
+				elapsedMs = (result.finishedAt ?? now) - result.startedAt;
+			} else if (result.finishedAt === undefined) {
+				state = "running";
+				const stageStart = current && current.finishedAt === undefined ? current.startedAt : result.startedAt;
+				elapsedMs = now - stageStart;
+			} else if (active) {
+				state = "waiting";
+				elapsedMs = now - result.finishedAt;
+			} else {
+				state = "done";
+				elapsedMs = result.finishedAt - result.startedAt;
+			}
+		}
+		rows.push({
+			itemId: result.itemId ?? clipRight(result.task.replace(/\s+/g, " ").trim(), 44),
+			state,
+			stage: current ? shortStage(current.agent) : undefined,
+			elapsedMs,
+			stagesDone,
+			retries,
+			tokens: tokensOf(result.usage),
+		});
+	}
+	return {
+		waveId: wave.results.find((result) => result.waveId)?.waveId,
+		rows,
+		startedAt,
+		cost,
+		active,
+	};
+}
+
+const waveTotalsCache = new Map<string, { mtimeMs: number; at: number; value?: WaveTotals }>();
+
+/**
+ * Assembled-item totals from the orchestrator's wave state.
+ *
+ * The state file is coordination notes written by an agent, not a fixed schema, so this
+ * reader accepts several shapes and returns nothing rather than guessing. The table then
+ * drops the progress bar instead of showing a wrong number.
+ */
+function waveTotalsFromState(state: unknown): WaveTotals | undefined {
+	if (!state || typeof state !== "object" || Array.isArray(state)) return undefined;
+	const data = state as Record<string, any>;
+	const ids = new Set<string>();
+	let assembled = 0;
+	const count = (items: unknown[], idOf: (item: any) => unknown, doneOf: (item: any) => boolean) => {
+		for (const item of items) {
+			const id = idOf(item);
+			if (typeof id === "string" && id) ids.add(id);
+			if (doneOf(item)) assembled++;
+		}
+	};
+	if (Array.isArray(data.rounds)) {
+		for (const round of data.rounds) {
+			const items = Array.isArray(round?.items) ? round.items : Array.isArray(round) ? round : [];
+			count(
+				items,
+				(item) => (typeof item === "string" ? item : item?.itemId ?? item?.id),
+				(item) =>
+					typeof item === "object" &&
+					item !== null &&
+					(Boolean(item.commit) || WAVE_ASSEMBLED.has(String(item.outcome ?? item.status ?? item.state ?? "").toLowerCase())),
+			);
+		}
+	}
+	if (Array.isArray(data.items)) {
+		count(
+			data.items,
+			(item) => item?.itemId ?? item?.id,
+			(item) => Boolean(item?.commit) || WAVE_ASSEMBLED.has(String(item?.status ?? item?.state ?? "").toLowerCase()),
+		);
+	}
+	const declared = Number(
+		data.total ?? data.itemCount ?? data.assembledTotal ?? data.scope?.count ?? data.scope?.items ?? 0,
+	);
+	const total = Math.max(ids.size, Number.isFinite(declared) ? declared : 0);
+	if (!total) return undefined;
+	const declaredDone = Number(data.assembled ?? data.completed ?? data.done ?? 0);
+	return { assembled: Math.min(total, Math.max(assembled, Number.isFinite(declaredDone) ? declaredDone : 0)), total };
+}
+
+function readWaveTotals(waveId: string | undefined, cwd: string): WaveTotals | undefined {
+	if (!waveId) return undefined;
+	const file = path.join(cwd, ".pi", "state", `${waveId}.json`);
+	let stat: fs.Stats;
+	try {
+		stat = fs.statSync(file);
+	} catch {
+		return undefined;
+	}
+	const cached = waveTotalsCache.get(file);
+	if (cached && cached.mtimeMs === stat.mtimeMs && Date.now() - cached.at < 5000) return cached.value;
+	let value: WaveTotals | undefined;
+	try {
+		value = waveTotalsFromState(JSON.parse(fs.readFileSync(file, "utf8")));
+	} catch {
+		value = undefined;
+	}
+	waveTotalsCache.set(file, { mtimeMs: stat.mtimeMs, at: Date.now(), value });
+	return value;
+}
+
+/** A row cell with its own colour, so padding is computed on visible text only. */
+interface WaveSeg {
+	text: string;
+	color?: WaveColor;
+}
+
+function segLength(segs: WaveSeg[]): number {
+	return segs.reduce((total, seg) => total + seg.text.length, 0);
+}
+
+/**
+ * Render the table as a bordered block.
+ *
+ * Columns are dropped right to left as the terminal narrows; the item id is never dropped,
+ * because it is the only column that says which work is at risk.
+ */
+function formatWaveWidget(
+	view: WaveView,
+	totals: WaveTotals | undefined,
+	width: number,
+	theme: WaveTheme,
+	now: number,
+): string[] {
+	const cols = Math.max(20, width);
+	const border = (text: string) => theme.fg("borderMuted", text);
+	const colorOf = (text: string, color?: WaveColor) => (color ? theme.fg(color, text) : text);
+
+	let showTokens = true;
+	let showDots = true;
+	let showStage = true;
+	const inner = Math.min(cols, 84) - 2;
+	// The id column absorbs the slack; below 14 cells it stops being readable, so shed a column.
+	const fixed = () => 13 + (showStage ? 18 : 0) + (showDots ? 8 : 0) + (showTokens ? 11 : 0);
+	while (inner - fixed() < 14 && (showTokens || showDots || showStage)) {
+		if (showTokens) showTokens = false;
+		else if (showDots) showDots = false;
+		else showStage = false;
+	}
+	const idWidth = Math.max(10, inner - fixed());
+	const cell = (text: string, width: number) => padRight(clipRight(text, width), width);
+
+	const lines: string[] = [];
+
+	// Title sits in the top border, so no separate heading line is needed.
+	const title = clipRight(view.waveId ?? "wave", Math.max(8, inner - 8));
+	// `┌ ` + title + ` ` + fill + `┐` must equal inner + 2, the same width as every other line.
+	lines.push(
+		border("\u250c ") +
+			theme.fg("accent", title) +
+			border(` ${"\u2500".repeat(Math.max(0, inner - title.length - 2))}\u2510`),
+	);
+
+	// Summary line: assembled count and bar outrank elapsed and cost when space is short.
+	const buildStat = (barCells: number, withElapsed: boolean, withCost: boolean): WaveSeg[] => {
+		const segs: WaveSeg[] = [];
+		if (totals && totals.total > 0) {
+			segs.push({ text: `${totals.assembled}/${totals.total} assembled` }, { text: "   " });
+			if (barCells > 0) {
+				const filled = Math.max(0, Math.min(barCells, Math.round((totals.assembled / totals.total) * barCells)));
+				segs.push(
+					{ text: "\u2588".repeat(filled), color: "success" },
+					{ text: "\u2591".repeat(barCells - filled), color: "dim" },
+					{ text: "  " },
+				);
+			}
+		}
+		segs.push({ text: `${view.rows.length} workers` });
+		if (withElapsed) segs.push({ text: "   " }, { text: formatElapsed(now - view.startedAt), color: "dim" });
+		if (withCost && view.cost > 0) segs.push({ text: "   " }, { text: `$${view.cost.toFixed(2)}`, color: "dim" });
+		return segs;
+	};
+	let stat = buildStat(24, true, true);
+	if (segLength(stat) > inner - 2) stat = buildStat(24, true, false);
+	if (segLength(stat) > inner - 2) {
+		const room = inner - 2 - segLength(buildStat(0, true, false)) - 2;
+		stat = buildStat(Math.max(0, room), true, false);
+	}
+	if (segLength(stat) > inner - 2) stat = buildStat(0, true, false);
+	if (segLength(stat) > inner - 2) stat = buildStat(0, false, false);
+	// The summary segments exclude the surrounding borders, which already consume two cells.
+	const statPad = Math.max(0, inner - 2 - segLength(stat));
+	lines.push(border("\u2502 ") + stat.map((seg) => colorOf(seg.text, seg.color)).join("") + " ".repeat(statPad) + border(" \u2502"));
+	lines.push(border(`\u251c${"\u2500".repeat(inner)}\u2524`));
+
+	for (const row of view.rows) {
+		// A repair in progress shows the retry glyph, so a slow row is distinguishable from a stuck one.
+		const retrying = row.state === "running" && row.retries > 0;
+		const glyph = retrying ? "\u21bb" : WAVE_GLYPH[row.state];
+		const glyphColor: WaveColor = retrying ? "warning" : WAVE_COLOR[row.state];
+
+		const stageText =
+			row.state === "waiting"
+				? "\u2014 waiting"
+				: row.state === "queued"
+					? "\u2014"
+					: retrying
+						? `${row.stage ?? "\u2014"}(retry ${row.retries + 1})`
+						: (row.stage ?? "\u2014");
+		const stageColor: WaveColor = row.state === "failed" ? "error" : row.state === "running" ? "warning" : "dim";
+		const elapsedText = row.state === "queued" ? "\u2014" : formatElapsed(row.elapsedMs);
+		const tokenText = row.tokens >= 1000 ? `${Math.round(row.tokens / 1000)}k tok` : `${row.tokens} tok`;
+		const done = Math.max(0, Math.min(WAVE_STAGE_TOTAL, row.stagesDone));
+
+		const segs: WaveSeg[] = [
+			{ text: "\u2502 ", color: "borderMuted" },
+			{ text: glyph, color: glyphColor },
+			{ text: " " },
+			{
+				text: cell(row.itemId, idWidth),
+				color: row.state === "done" ? "muted" : row.state === "queued" ? "dim" : undefined,
+			},
+		];
+		if (showStage) segs.push({ text: "   " }, { text: cell(stageText, 15), color: stageColor });
+		segs.push({ text: " " }, { text: padLeft(elapsedText, 6), color: "dim" });
+		if (showDots) {
+			segs.push(
+				{ text: "  " },
+				{ text: "\u25b8".repeat(done), color: row.state === "failed" ? "error" : "accent" },
+				{ text: "\u00b7".repeat(WAVE_STAGE_TOTAL - done), color: "dim" },
+			);
+		}
+		if (showTokens) segs.push({ text: "   " }, { text: padLeft(tokenText, 8), color: "dim" });
+		const pad = Math.max(0, inner - segLength(segs));
+		segs.push({ text: " ".repeat(pad) }, { text: " \u2502", color: "borderMuted" });
+		lines.push(segs.map((seg) => colorOf(seg.text, seg.color)).join(""));
+	}
+
+	lines.push(border(`\u2514${"\u2500".repeat(inner)}\u2518`));
+	return lines;
+}
+
+let waveDetails: SubagentDetails | undefined;
+let waveCtx: ExtensionContext | undefined;
+let waveInterval: ReturnType<typeof setInterval> | null = null;
+
+function tickWave(): void {
+	if (!waveCtx || !waveDetails) return;
+	const view = waveViewFrom(waveDetails, Date.now());
+	if (!view) return;
+	const width = process.stdout.columns ?? 100;
+	try {
+		waveCtx.ui.setWidget(
+			WAVE_WIDGET,
+			formatWaveWidget(view, readWaveTotals(view.waveId, waveCtx.cwd), width, waveCtx.ui.theme, Date.now()),
+			{ placement: "aboveEditor" },
+		);
+	} catch {
+		/* TUI may be gone; ignore */
+	}
+}
+
+/** Publish a dispatch's details for the live table. Cheap and idempotent; safe to call per update. */
+function publishWave(details: SubagentDetails | undefined, ctx: ExtensionContext): void {
+	if (!ctx.hasUI || !details || !findWaveDispatch(details)) return;
+	waveDetails = details;
+	waveCtx = ctx;
+	if (!waveInterval) waveInterval = setInterval(tickWave, LIVE_TICK_MS);
+	tickWave();
+}
+
+/** Leave the final table on screen and stop ticking. */
+function freezeWave(): void {
+	if (waveInterval) {
+		clearInterval(waveInterval);
+		waveInterval = null;
+	}
+	tickWave();
+	waveDetails = undefined;
+	waveCtx = undefined;
+}
+
+function clearWave(): void {
+	if (waveInterval) {
+		clearInterval(waveInterval);
+		waveInterval = null;
+	}
+	if (waveCtx) {
+		try {
+			waveCtx.ui.setWidget(WAVE_WIDGET, undefined);
+		} catch {
+			/* ignore */
+		}
+	}
+	waveDetails = undefined;
+	waveCtx = undefined;
 }
 
 /**
@@ -369,6 +814,10 @@ interface SingleResult {
 	task: string;
 	/** Work type from the dispatch contract: small, normal, large, wave, or documentation. */
 	workType?: string;
+	/** Roadmap item this dispatch belongs to, copied from the contract so the live wave table can name it. */
+	itemId?: string;
+	/** Wave this dispatch belongs to, copied from the contract so the live wave table can group it. */
+	waveId?: string;
 	exitCode: number;
 	messages: Message[];
 	stderr: string;
@@ -507,15 +956,12 @@ interface DispatchDefaults {
 	thinkingLevel?: ThinkingLevel;
 }
 
-interface HandoffContract {
-	taskId: string;
-	requirements: string[];
-	plan?: string;
-	priorRecords?: string[];
-	expectedSnapshot?: string;
-	workType?: string;
-	documentRequired?: boolean;
-}
+/**
+ * The contract shape is derived from `ContractSchema`, never restated: a hand-maintained copy
+ * silently fell behind the schema once already, and the wave fields were unusable until a
+ * typecheck caught it.
+ */
+type HandoffContract = Static<typeof ContractSchema>;
 
 /**
  * Running subagent child processes (RPC mode). Registered while a child runs so
@@ -588,6 +1034,8 @@ async function runSingleAgent(
 		agentSource: agent.source,
 		task,
 		workType: contract?.workType,
+		itemId: contract?.itemId,
+		waveId: contract?.waveId,
 		exitCode: 0,
 		messages: [],
 		stderr: "",
@@ -852,13 +1300,16 @@ export default function (pi: ExtensionAPI) {
 	// Global run timer: live mm:ss widget while the agent works on the
 	// current prompt (agent_start → agent_end).
 	pi.on("agent_start", async (_event, ctx) => {
+		clearWave();
 		startRunTimer(ctx.ui);
 	});
 	pi.on("agent_end", async () => {
 		stopRunTimer();
+		freezeWave();
 	});
 	pi.on("session_shutdown", async () => {
 		stopRunTimer();
+		clearWave();
 		try {
 			runTimerUI?.setWidget(RUN_TIMER_WIDGET, undefined);
 		} catch {
@@ -1053,6 +1504,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				const emitParallelUpdate = () => {
+					publishWave(makeDetails("parallel")([...allResults]), ctx);
 					if (onUpdate) {
 						const running = allResults.filter((r) => r.exitCode === -1).length;
 						const done = allResults.filter((r) => r.exitCode !== -1).length;
@@ -1120,7 +1572,10 @@ export default function (pi: ExtensionAPI) {
 					params.cwd,
 					undefined,
 					signal,
-					onUpdate,
+					(partial) => {
+						publishWave(partial.details, ctx);
+						if (onUpdate) onUpdate(partial);
+					},
 					makeDetails("single"),
 					params.contract,
 				);
