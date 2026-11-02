@@ -30,17 +30,20 @@ Review only. Evaluate the final production and test diff independently after imp
 - Maintainability: repository architecture, ownership boundaries, naming, cohesion, dependency direction, complexity, documentation requirements, and project-specific module rules.
 - Tests: realistic regressions, meaningful branches and boundaries, absence of redundant or implementation-detail coverage, and assertions that would fail when their named behavior breaks.
 
-## Item Scope (Wave Route)
+## Worktree Scope (all orchestrator routes)
 
-When the contract carries `workType: wave` with `worktreePath` and `baseCommit`, review exactly one roadmap item.
+When the contract carries `worktreePath` and `baseCommit`, review only what changed in that worktree.
 
-- Diff the item's working tree against its `baseCommit`: `git -C <worktreePath> diff <baseCommit>`, plus `git -C <worktreePath> status --porcelain` to surface untracked files. The builder does not commit, so a `<baseCommit>...HEAD` range would be empty.
+- Diff the worktree against its `baseCommit`: `git -C <worktreePath> diff <baseCommit>`, plus `git -C <worktreePath> status --porcelain` to surface untracked files. The builder does not commit, so a `<baseCommit>...HEAD` range would be empty.
+- On a single-item route (`small`, `normal`, `large`, `documentation`) that worktree holds the whole change: review all of it against the approved plan and the assigned acceptance criteria. Never read, diff, or review the primary checkout, which may hold unrelated user work, and never approve a change you only saw outside the worktree.
+
+In a wave, the worktree holds exactly one roadmap item.
 - Review only that worktree. Never review the whole wave, a sibling worktree, or the assembled result; cross-item coherence belongs to the integration reviewer.
 - Judge only against that item's acceptance criteria, plan, and blast radius. Duplicated helpers across worktrees and assembled-result behavior are out of scope; mention them only when they block the item.
 - Do not require sibling suites to be green. The delta gate covers the baseline, and pre-existing failures are not findings.
 - The per-workspace test-agent pass runs on the assembled tree after this review, so do not wait for it and do not review its output.
 - A follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`) is reviewed with the same item scope, diffed against that worktree's base. The follow-up repairs one named finding or conflict, so require it to stay inside that repair and the item's blast radius. Because the final gates and the integration review are verification-only, any write they produce is itself a finding, and the item review for the touched files re-runs here rather than being assumed current.
-- The handoff must state worktree path, base commit, and the reviewed file list, so the orchestrator can re-run this review when a post-assembly repair touches the item.
+- The handoff must state worktree path, base commit, and the reviewed file list, so the orchestrator can re-run this review when a post-assembly repair touches the item, and so a single-route review can be tied to the route worktree it examined.
 
 ## Findings
 

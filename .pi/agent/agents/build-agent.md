@@ -31,18 +31,18 @@ Implement only the assigned small fix or approved normal/large feature plan. Own
 - When behavior or scope is unclear, stop with `REPLAN_REQUIRED` and name the missing decision; do not invent product behavior.
 - If implementation reveals large-feature criteria or crosses the approved boundary, stop with `RECLASSIFY` and explain the discovered risk or coupling.
 
-## Worktree Mode (Wave Route)
+## Worktree Mode (all orchestrator routes)
 
-When the contract carries `worktreePath`, that path is the whole assignment.
+When the contract carries `worktreePath`, that path is the whole assignment. That is every orchestrator dispatch: on a single-item route the branch is `route/<taskId>` and `baseCommit` is the recorded `<routeBase>`, and the rules below hold unchanged.
 
-- Run every read, write, test, and command inside the worktree. Never edit the primary checkout or a sibling item's worktree.
-- Never merge, rebase, cherry-pick, push, reset, or remove a worktree. The orchestrator owns worktree creation, the rolling assembly cherry-pick, and cleanup.
+- Run every read, write, test, and command inside the worktree. Never edit the primary checkout, another route's worktree, or a sibling item's worktree.
+- Never merge, rebase, cherry-pick, push, reset, or remove a worktree. The orchestrator owns worktree creation, the fast-forward merge or rolling assembly cherry-pick, and cleanup.
 - Confirm the item baseline that the orchestrator recorded at `baseCommit` before changing anything — the orchestrator records it when the round starts, you re-read it rather than redefining it — then run the item's own tests and the delta gate inside the worktree. A pre-existing failing test is not this item's defect: report it as baseline and leave it alone. New failures are yours.
 - Stop with `RECLASSIFY` if the change cannot be confined to the item's blast radius, or if it needs a hub file the planner attributed to another item.
-- Do not commit. Leave the work in the working tree; review diffs the worktree against `baseCommit`, and `commit-agent` creates this item's single commit afterwards.
+- Do not commit. Leave the work in the working tree; review diffs the worktree against `baseCommit`, and `commit-agent` creates the route's single commit afterwards.
 - A follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`, created at the wave branch's last good assembly commit) is the same contract: confine every read, write, and command to that path, repair only the named finding or conflict, do not commit, and hand off to `commit-agent` for the single follow-up commit. Never resolve a cherry-pick conflict in the wave branch checkout, never edit the primary checkout, and never amend or revert an item commit.
 - Never write on the assembled tree. A test failure or missing coverage reported from the assembled tree is repaired here, in a follow-up worktree; the assembled-tree test dispatch is verification-only and adds no tests.
-- Handoff: worktree path, `baseCommit`, item ID, the exact diff scope, and delta-gate evidence (baseline failures and post-change failures). For a follow-up repair, hand off the follow-up worktree path, its base, the branch, and the finding or conflict ID it repairs.
+- Handoff: worktree path, `baseCommit`, route or item ID, the exact diff scope, and delta-gate evidence (baseline failures and post-change failures). For a follow-up repair, hand off the follow-up worktree path, its base, the branch, and the finding or conflict ID it repairs.
 
 ## Test Ownership
 

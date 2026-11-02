@@ -120,12 +120,29 @@ Every architect plan is confirmed by the user before any implementation stage ru
 - Applies to `architect-agent`, `architect-large-agent`, and — once per wave, for the whole approved scope — the scope plus the `wave-planner-agent` output.
 - Present the work type, what the plan will change, the files or areas it names, the stages that will run, the validation it expects, and any cost or risk it surfaces. For a wave, present the roadmap scope, the ready queue, N, the expected serialization from edges, and every item that cannot become ready. Approval of the scope authorizes later backfilled items from that same scope; otherwise every refill would stall the run.
 - Wait for an explicit approval. Silence, an unrelated reply, or the original request repeated is not approval. Approval arrives only through the continuation protocol in *Suspending for User Input*.
-- On revision, re-dispatch the architect with the user's change. Never patch a plan yourself.
+- On revision, re-dispatch the architect with the user's change, in the same route worktree when one exists. Never patch a plan yourself.
+- A single-item plan is written inside the route worktree, so a rejected or abandoned plan leaves that worktree unmerged: keep it, report its path and branch, and revise in place. Never discard it and never merge it before approval.
 - Record the approval and its exact wording in task state before dispatching the first implementation stage.
 - Only plans are gated. Quarantine, follow-up routes, cost and failure reports, and reclassification are reported as they happen and need no confirmation.
 - A plan-only request ends at the delivered plan. If the user later asks to implement, this gate applies then.
 
+## Worktree Isolation
+
+Every route that implements something — small, normal, large, documentation, wave — runs inside a dedicated `git` worktree, never in the primary checkout. The primary checkout may hold the user's uncommitted work and no stage may touch it.
+
+- Before the first stage, record `<routeBase>` = `git rev-parse HEAD` and the current branch of the primary checkout. If task-related changes are already uncommitted there, stop with `AWAITING DECISION` instead of sweeping them into the route.
+- Create it: `git worktree add -b route/<taskId> <path> <routeBase>`. Default `<path>` to `.pi/worktrees/<taskId>`; if the repository does not ignore `.pi/worktrees/`, place it outside the repository and record that path. Run the repository's declared bootstrap in the worktree before the first dispatch and record its exit status; a worktree whose bootstrap fails is not dispatched.
+- Pass `worktreePath` in the contract and `cwd` equal to it on every dispatch — architect, build, test, review, document, formatter, commit — with `baseCommit` = `<routeBase>`. `cwd` is what drives snapshots, review digests, and check-log paths, so never set one without the other.
+- Assemble after the commit: `git -C <primary> merge --ff-only route/<taskId>`. Never merge into a dirty task-related checkout and never force it.
+- Clean up in this order: `git worktree remove <path>`, `git branch -d route/<taskId>`, `git worktree prune`. Verify with `git worktree list` and record that output with the merge result as completion evidence.
+- Cleanup is part of the route, not an epilogue: a route is not complete while any worktree it created still exists, and a leftover worktree is a reported failure, not background state.
+- Never remove a worktree holding unmerged commits or uncommitted changes, and never `--force` past that guard. If the merge cannot fast-forward, the primary checkout moved, the route failed, or the run was abandoned, keep the worktree and branch, report their exact paths, branch names, and the recovery command, and let the user decide.
+- A wave keeps its own shape: one worktree per item plus the one assembly worktree defined in `WAVE.md`. Item worktrees are removed as their commits land; the assembly worktree is removed after the readiness report, and its branch is kept until the user lands or drops it.
+- Direct work is the only exception: when the orchestrator is not called — a direct main-thread edit, or an explicit user opt-out from routing — changes land immediately in the primary checkout with no worktree, no merge, and no cleanup step.
+
 ## Routes
+
+Every route below runs inside the `route/<taskId>` worktree described in *Worktree Isolation*, on branch `route/<taskId>`, and its commit is fast-forwarded into the primary checkout and the worktree removed before the route is reported complete.
 
 ### Small Fix Route
 
@@ -148,6 +165,7 @@ Every architect plan is confirmed by the user before any implementation stage ru
 
 `architect-large-agent → plan approved → build → test → code review → document → formatter → commit`
 
+- This route is worktree-isolated exactly like a small fix: the plan is written into the assigned roadmap feature file inside the route worktree, the commit lands on `route/<taskId>`, and the worktree is removed after the fast-forward merge.
 - The large-feature architect completes the interview and writes the detailed plan into the assigned roadmap feature file.
 - The test agent performs an independent test-design and execution pass before review.
 - The reviewer evaluates the final production and test diff together.
@@ -176,6 +194,9 @@ Shape: set N = 8 and `<waveBase>` → `wave-planner-agent` returns `WAVE_READY` 
 
 ## Prohibited Actions
 
+- Do not copy uncommitted user changes into a route worktree, and do not carry task-related changes from the primary checkout instead of creating the worktree.
+- Do not run any implementation, test, review, format, document, or commit stage of a route in the primary checkout, and do not finish a route with a route-owned worktree still registered.
+- Do not remove, prune, or force-remove a worktree that still holds unmerged commits or uncommitted changes.
 - Do not perform specialist work yourself or let an agent approve its own stage.
 - Do not violate the wave rules in `WAVE.md`.
 - Do not skip a stage required by the selected route.
@@ -194,4 +215,5 @@ Shape: set N = 8 and `<waveBase>` → `wave-planner-agent` returns `WAVE_READY` 
 - Failures were fixed by the responsible agent and affected downstream checks were rerun.
 - A large feature with an unresolved user-owned decision has a completed interview, and every large feature has a detailed roadmap plan before build begins.
 - The final commit contains one coherent task and no unrelated user changes.
+- Every route created a worktree at a recorded `<routeBase>`, dispatched every stage with `cwd` = that worktree, fast-forward merged `route/<taskId>` into the primary checkout, removed the worktree (`git worktree list` clean of route-owned entries), and recorded the merge result with the removal as evidence. A wave additionally removed every item worktree as it was assembled and the assembly worktree after the readiness report, or reported each retained worktree with its path, branch, and recovery command.
 - For a wave: every item is either committed and assembled, or quarantined before its commit existed, never both; the ready queue drained with no round in flight and every item either assembled or reported as blocked; the integration record is current for the assembled content and records `treeHash` with `recordedAt`; the per-workspace suites ran on the assembled tree; wave state records every pruned edge, every round's items and assembly head, and the final per-item status; the readiness report created no commit. A wave with an open follow-up is not reported ready, and the readiness report requires a current `INTEGRATION_PASS` for the final `treeHash`.

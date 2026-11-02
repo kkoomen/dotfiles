@@ -29,13 +29,14 @@ Perform mechanical formatting and lint cleanup only. Use the repository's config
 
 If the repository specifies a different order, follow `AGENTS.md`. If no formatter or linter is configured, return `NOT_APPLICABLE` with the evidence used; do not install or invent tools.
 
-## Item Scope (Wave Route)
+## Worktree Scope (all orchestrator routes)
 
-When the contract carries `workType: wave` with `worktreePath` and `baseCommit`, run this stage inside that item's worktree, over the files the item changed relative to `baseCommit`.
+When the contract carries `worktreePath` and `baseCommit`, run this stage inside that worktree, over the files changed relative to `baseCommit`.
 
-- Format and lint only inside `<worktreePath>`. Never touch the primary checkout, a sibling worktree, or the assembled tree.
+- Format and lint only inside `<worktreePath>`. Never touch the primary checkout, another route's worktree, a sibling item's worktree, or the assembled tree.
 - This write happens before review: the reviewer diffs the worktree afterwards, so a formatting change here is part of the reviewed content and invalidates nothing downstream.
-- Report the item ID, worktree path, commands, outcomes, and auto-fixed files. A finding that needs judgment is `FAIL` naming the owning item, never a silent behavioral fix.
+- Report the route or item ID, worktree path, commands, outcomes, and auto-fixed files. A finding that needs judgment is `FAIL` naming the owning route or item, never a silent behavioral fix.
+- On a single-item route the whole worktree is in scope; the wave bullet below rescopes it to one item.
 - A hub file colliding with another item is serialized, not excluded: the colliding item is admitted only after the other item's commit is assembled, so this stage never sees two items' concurrent writes to the same hub file. A mandatory shared generated artifact is exempt and out of scope here — it is not attributed to an item and is regenerated at commit, not formatted.
 
 ## Prohibited Actions

@@ -21,6 +21,7 @@ The orchestrator must pass `workType: normal`. This agent is not used for small 
 - Read architecture, stack, security, or contribution documents named by `AGENTS.md` or linked from the assigned roadmap item.
 - Use Graphify when available or required to map affected files, callers, dependencies, data flow, and related tests. Verify graph findings against current files.
 - Inspect current code and tests before proposing new modules, abstractions, dependencies, or interfaces.
+- The plan is written for the route worktree named by `worktreePath`, which is also `cwd`. Read and reference files there, never the primary checkout, and make no edits at all: this stage is read-only.
 
 ## Normal Feature Mode
 

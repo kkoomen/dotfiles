@@ -14,7 +14,6 @@ A wave is a **worker pool**, not a stage pipeline and not a fixed batch. Each ro
 - Post-assembly gate re-runs are dispatched to `test-agent` as verification-only runs, or to `build-agent` when content must change; never executed by the orchestrator.
 - Snapshots are per scope: an item's worktree snapshot guards only that item's stages; the assembled tree's snapshot guards the final gates. Never compare a worktree snapshot to an assembled-tree record.
 - If the repository does not ignore `.pi/worktrees/`, place worktrees outside the repo and record that path.
-
 ## Rounds
 
 - **N.** `N` is 8, set once at the start and recorded in state. It is the only concurrency number: the launcher's per-call task limit and worker limit must both equal it, and a wave never caps, splits, or refuses scope because the roadmap is large.
@@ -34,7 +33,7 @@ A wave is a **worker pool**, not a stage pipeline and not a fixed batch. Each ro
   3. Create one worktree per picked item with `git worktree add -b item/<itemId> <path> <hand>` and record the branch in state. Every item in the round shares `hand` as its `baseCommit`. A fresh worktree has no `node_modules`, so run the repository's declared bootstrap in it before dispatch — `pnpm install --frozen-lockfile --prefer-offline` for a pnpm workspace — serially, and record its exit status. A worktree whose bootstrap fails is not dispatched; without this step every gate fails for the wrong reason and the builder misreads a missing dependency as a red baseline.
   4. Dispatch **one** `subagent` call whose `tasks[]` holds one `item-runner-agent` entry per picked item, each with `cwd` set to that item's worktree and a contract carrying the wave `taskId`, `itemId`, `round`, `worktreePath`, and `baseCommit`.
 - **Barrier.** That call returns only when every worker in it has returned, so a round is as long as its slowest item and a worker that finishes early waits for the round. Do not shrink `N` to soften this, do not dispatch workers one at a time, and do not poll for partial results: there are none. Shorten the barrier with pick order instead. A round in which any worker failed reports the whole call as an error; treat that flag as informational and decide each item's outcome from its own record. One failed item is not a failed round.
-- **Assembly, then refill.** After the call returns, cherry-pick every returned commit onto the wave branch one at a time in pick order, delete each worktree as its commit lands, record each head, then start the next round immediately. Never wait for a slow item across rounds, and never hold an unfinished round open.
+- **Assembly, then refill.** After the call returns, cherry-pick every returned commit onto the wave branch one at a time in pick order, remove each worktree as its commit lands (`git worktree remove <path>`, then `git branch -d item/<itemId>`), record each head, then start the next round immediately. Never wait for a slow item across rounds, and never hold an unfinished round open.
 - **Drain.** Every round runs until the ready queue holds no admissible item. Then declare the queue drained only when no round is in flight, and run the final gates. If anything is blocked or quarantined, report it explicitly instead of reporting readiness.
 
 ## Worker route
@@ -89,6 +88,16 @@ This is the only legal repair path once an item's commit is assembled. It applie
 - The integration review re-runs on the updated assembled tree and records a new `treeHash`.
 - A wave with an open follow-up is not reported ready: the readiness report requires a current `INTEGRATION_PASS` for the final `treeHash`.
 
+## Worktree cleanup
+
+A wave owns every worktree it creates and removes all of them before the run is reported complete. This is part of the route, not an epilogue.
+
+- Remove each item worktree (`git worktree remove <path>`) as its commit is assembled, and delete its `item/<itemId>` branch once merged with `git branch -d item/<itemId>`. Record the removal next to the item's outcome in wave state.
+- Remove a follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`) once its commit is assembled and the integration review has re-run. Keep its branch until the user lands or drops it.
+- Remove the assembly worktree after the readiness report: `git worktree remove <assemblyPath>`, then `git worktree prune`, then confirm with `git worktree list` that only the primary checkout remains. Keep the wave branch itself; deleting it would discard assembled work.
+- Never remove a worktree holding unmerged commits or uncommitted changes, and never `--force` past that guard. A quarantined item's worktree and branch are part of its recorded evidence: retain them, report their exact paths and branch name with the failing evidence, and let the user decide.
+- A wave with a leftover worktree that was not reported as retained is not reported ready.
+
 ## Failure routing and quarantine
 
 Cluster failures by root cause before dispatching any repair. One dispatch per root cause, not one per failing check.
@@ -135,3 +144,4 @@ The readiness report is blocked until a current `INTEGRATION_PASS` record exists
 - Do not dispatch an `item-runner-agent` without `cwd` set to its worktree and the shared wave `taskId` in its contract.
 - Do not compare a worktree snapshot with an assembled-tree snapshot, and do not replace a snapshot to silence the guard.
 - Do not dispatch a wave stage without `cwd` set to that stage's worktree.
+- Do not report a wave ready while a worktree it created still exists and was not explicitly reported as retained with its path, branch, and evidence.

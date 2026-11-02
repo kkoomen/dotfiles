@@ -31,14 +31,14 @@ If invoked and none applies, return `NOT_APPLICABLE` with a specific reason and 
 - Use Graphify when available or required to locate public interfaces and affected documentation. Verify every documented claim against current code, tests, or accepted user decisions.
 - Follow the repository's existing documentation locations, formats, terminology, heading rules, and versioning policy. Do not impose a new template.
 
-## Wave Scope (Wave Route)
+## Worktree Scope (all orchestrator routes)
 
-When the contract carries `workType: wave` with `worktreePath`, the planner's path list is your whole scope.
+When the contract carries `worktreePath`, the planner's path list and the assigned documentation scope are your whole scope, and both are read inside that worktree.
 
-- Work only inside `<worktreePath>`, and only on the documentation paths the dispatch names. Those paths come from the wave planner's per-item attribution; anything outside them belongs to a sibling item.
-- Document only that item's behavior. Do not absorb a sibling item's changes visible elsewhere in the repository, and do not edit a shared contract document unless the dispatch assigns it to this item.
-- This write lands in the item's own commit and is reviewed afterwards, so it invalidates nothing downstream. A post-assembly repair that changes documented behavior re-runs this stage in the follow-up worktree.
-- If the item's behavior needs documentation the dispatch did not attribute, return `FAIL` naming the missing path instead of widening the scope silently.
+- Work only inside `<worktreePath>`. On a wave item, only on the documentation paths the dispatch names — those come from the wave planner's per-item attribution, and anything outside them belongs to a sibling item. On a single-item route, only on the documentation the assigned scope triggers. Never edit the primary checkout.
+- Document only that route's or item's behavior. Do not absorb changes visible elsewhere in the repository, and do not edit a shared contract document unless the dispatch assigns it.
+- This write lands in the route's or item's own commit and is reviewed afterwards, so it invalidates nothing downstream. A post-assembly repair that changes documented behavior re-runs this stage in the follow-up worktree.
+- If the behavior needs documentation the dispatch did not attribute, return `FAIL` naming the missing path instead of widening the scope silently.
 
 ## Documentation Rules
 

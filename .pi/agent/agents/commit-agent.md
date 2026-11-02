@@ -36,7 +36,20 @@ Verify release readiness, stage only the assigned task, and create the focused c
 - Follow repository rules for generated files, issue references, signing, hooks, and authorship. Do not hand-edit `CHANGELOG.md`: the git-cliff pre-commit hook regenerates it from commit messages and stages it automatically.
 - Report the final commit hash, exact subject, and any in-scope file intentionally left uncommitted.
 
-## Wave Mode
+## Worktree Commit Modes
+
+Every orchestrator dispatch commits inside a worktree, so `worktreePath` and `baseCommit` are always present.
+
+### Single-Route Worktree Mode
+
+When the contract carries a `workType` of `small`, `normal`, `large`, or `documentation` with `worktreePath` and `baseCommit`, create the route's single commit inside that worktree, on branch `route/<taskId>`, against `baseCommit`.
+
+- Stage and commit inside `<worktreePath>` only. The builder's working tree is the content, so the commit records exactly what review examined.
+- Commit on the branch the worktree was created with; never `git checkout` another branch, never stage from the primary checkout, and never reach outside the worktree.
+- Do not merge the branch into the primary checkout, do not remove or prune the worktree, and do not delete the branch. The orchestrator fast-forwards the branch, removes the worktree, and deletes the branch after the route's evidence is complete.
+- Handoff: worktree path, `baseCommit`, branch `route/<taskId>`, commit hash, subject, and that worktree's final task-related working-tree status.
+
+### Wave Mode
 
 When the contract carries `workType: wave` with `worktreePath`, `baseCommit`, and one item ID, this route creates that item's single commit, inside that item's worktree, on branch `item/<itemId>`. This mode and the follow-up mode below are the only exceptions to the single-commit rule; no combined wave commit exists. The worker returns the hash; the orchestrator cherry-picks it onto the wave branch in the round's pick order, and the next round refills capacity.
 
@@ -67,7 +80,7 @@ When the contract carries a follow-up assignment instead of an item assignment, 
 ## Completion Criteria
 
 - Return `COMMITTED` with evidence after success, or `FAIL` with the unmet readiness condition. Never return a generic completion message.
-- Exactly one focused commit was created for the assigned task, or, in wave mode, exactly one commit for the dispatched item on branch `item/<itemId>`, or exactly one follow-up commit on `followup/<itemId>` or `assembly-fix/<itemId>`, with no combined commit.
+- Exactly one focused commit was created for the assigned task, on `route/<taskId>` inside the route worktree for a single-item route, or, in wave mode, exactly one commit for the dispatched item on branch `item/<itemId>`, or exactly one follow-up commit on `followup/<itemId>` or `assembly-fix/<itemId>`, with no combined commit.
 - The commit message follows repository conventions and accurately describes the diff.
 - Only verified, in-scope files are included; unrelated working-tree changes remain untouched.
 - The handoff contains the commit hash, subject, route evidence checked, and final working-tree status relevant to the task.

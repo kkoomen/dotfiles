@@ -22,6 +22,7 @@ The orchestrator must pass `workType: large` for a single-item route. The archit
 - Use Graphify when available or required to map affected files, callers, dependencies, data flow, and related tests. Verify graph findings against current files.
 - Inspect current code and tests before proposing new modules, abstractions, dependencies, or interfaces.
 - Read and follow `~/.pi/agent/skills/grill-me/SKILL.md` before interviewing the user.
+- The plan is written into the assigned roadmap file inside the route worktree named by `worktreePath`, which is also `cwd`, on branch `route/<taskId>`. Read, reference, and edit files there only, never in the primary checkout; the orchestrator commits, merges, and removes that worktree.
 
 ## Interview and Planning
 

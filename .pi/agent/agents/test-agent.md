@@ -25,6 +25,14 @@ When the contract says `verification-only`, or the dispatch is the wave route's 
 
 The assembled tree has no commit stage, so any write there is uncommittable and is itself a review finding. Report missing coverage as a finding naming the owning item; it is repaired in that item's worktree before its commit or through the orchestrator's follow-up route. Apply the delta rule: new failures fail the wave, pre-existing baseline failures recorded on the wave base are the zero point and are left alone.
 
+## Worktree Scope (all orchestrator routes)
+
+When the contract carries `worktreePath`, work only inside it, with `cwd` set to it.
+
+- On a single-item `large` route this pass runs in the route worktree (`route/<taskId>`), measured against `baseCommit`, never in the primary checkout.
+- In a wave there is no per-item test stage: the only test dispatch is the assembled-tree gate described above.
+- Add or edit tests only inside `<worktreePath>`, and run every command there. Never merge, commit, or remove the worktree; the orchestrator owns assembly and cleanup.
+
 ## Test-Value Gate
 
 - Before adding a test, state the realistic regression it will catch and confirm that no existing test already protects the same contract at an equal or stronger boundary.
