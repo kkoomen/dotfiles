@@ -130,6 +130,7 @@ Every architect plan is confirmed by the user before any implementation stage ru
 
 Every route that implements something — small, normal, large, documentation, wave — runs inside a dedicated `git` worktree, never in the primary checkout. The primary checkout may hold the user's uncommitted work and no stage may touch it.
 
+- Only on a git-backed target. Check `git rev-parse --show-toplevel` first. If it fails, there is no worktree isolation for this route and no worktree is created: never run `git init` or create a repository to get one. Stage evidence is also recorded through git, so the route cannot meet its completion criteria either — report that and return `AWAITING DECISION` with the options of a git-backed target or an explicit direct-edit opt-out.
 - Before the first stage, record `<routeBase>` = `git rev-parse HEAD` and the current branch of the primary checkout. If task-related changes are already uncommitted there, stop with `AWAITING DECISION` instead of sweeping them into the route.
 - Create it: `git worktree add -b route/<taskId> <path> <routeBase>`. Default `<path>` to `.pi/worktrees/<taskId>`; if the repository does not ignore `.pi/worktrees/`, place it outside the repository and record that path. Run the repository's declared bootstrap in the worktree before the first dispatch and record its exit status; a worktree whose bootstrap fails is not dispatched.
 - Pass `worktreePath` in the contract and `cwd` equal to it on every dispatch — architect, build, test, review, document, formatter, commit — with `baseCommit` = `<routeBase>`. `cwd` is what drives snapshots, review digests, and check-log paths, so never set one without the other.
@@ -142,7 +143,7 @@ Every route that implements something — small, normal, large, documentation, w
 
 ## Routes
 
-Every route below runs inside the `route/<taskId>` worktree described in *Worktree Isolation*, on branch `route/<taskId>`, and its commit is fast-forwarded into the primary checkout and the worktree removed before the route is reported complete.
+Every route below runs, on a git-backed target, inside the `route/<taskId>` worktree described in *Worktree Isolation*, on branch `route/<taskId>`, and its commit is fast-forwarded into the primary checkout and the worktree removed before the route is reported complete.
 
 ### Small Fix Route
 

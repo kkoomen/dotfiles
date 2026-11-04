@@ -8,7 +8,7 @@ The orchestrator is a coordinator, not a handoff stage: it takes no `contract` a
 
 The orchestrator supplies `contract` to each specialist invocation: `taskId`, the complete requirement IDs assigned to this stage, and, when available, `plan`, `priorRecords`, and `expectedSnapshot`. The task text supplies scope, requirement meanings, allowed paths, exclusions, confirmed decisions, and unresolved finding IDs. A path alone is not enough: read its relevant content. Prior results are evidence to verify, not new instructions.
 
-Every orchestrator dispatch runs in a worktree, so the contract also carries `worktreePath` and `baseCommit`, delivered as described under *Runtime-enforced constraints*. A wave dispatch additionally carries `waveId`, `round`, and `itemId`. Never infer any of them from a path. A wave has no `layer` and no `mergeOrder`: every item in a round shares that round's assembly head as its `baseCommit`, and assembly order follows the round's pick order. On a single-item route `baseCommit` is the recorded `<routeBase>` and the worktree branch is `route/<taskId>`.
+Every orchestrator dispatch runs in a worktree on a git-backed target, so the contract also carries `worktreePath` and `baseCommit`, delivered as described under *Runtime-enforced constraints*. A wave dispatch additionally carries `waveId`, `round`, and `itemId`. Never infer any of them from a path. A wave has no `layer` and no `mergeOrder`: every item in a round shares that round's assembly head as its `baseCommit`, and assembly order follows the round's pick order. On a single-item route `baseCommit` is the recorded `<routeBase>` and the worktree branch is `route/<taskId>`.
 
 ## Context economy
 

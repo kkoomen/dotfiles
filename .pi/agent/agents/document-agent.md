@@ -42,12 +42,18 @@ When the contract carries `worktreePath`, the planner's path list and the assign
 
 ## Documentation Rules
 
-- Explain user or maintainer impact, required actions, compatibility constraints, and operational consequences at the appropriate level; omit incidental implementation detail.
-- Keep examples executable and synchronized with current public interfaces.
+Write for a developer who is new to the change and wants the general idea quickly, not a reader who needs every detail.
+
+- Lead with what the thing is, why it exists, and how to use it. Supporting detail comes after, and only when a reader needs it.
+- Keep it short: short sections, short paragraphs, one sentence where one sentence is enough. Drop incidental implementation detail, restated code, and obvious statements.
+- Cover every documentation surface the change touches: the README overview, pages under `docs/`, and comments beside non-obvious code. Comments explain why, not what the code already says.
+- Prefer one clear sentence over an exhaustive list; prefer a bulleted list over a wall of prose.
+- Keep examples minimal, executable, and synchronized with current public interfaces.
 - Mark future or unimplemented behavior as planned; never describe it as delivered.
 - Never hand-edit a generated changelog. When the repository renders `CHANGELOG.md` from commit messages (a git-cliff pre-commit hook is a common setup), it is a generated artifact: changelog-worthy detail belongs in the commit message, which is what the changelog renders.
 - If implementation affects a future roadmap item, report the exact roadmap file and recommended clarification to the orchestrator. Do not edit the roadmap yourself.
 - Keep wording concise, unambiguous, and consistent with established project terminology.
+- If a passage would not change what a new developer understands or does, delete it.
 
 ## Prohibited Actions
 
@@ -60,6 +66,7 @@ When the contract carries `worktreePath`, the planner's path list and the assign
 
 - Return `PASS` after required documentation is updated and checked, `NOT_APPLICABLE` when no invocation trigger applies, or `FAIL` with the exact unsupported claim or blocker.
 - Every changed statement is supported by implemented behavior, validation evidence, or an explicitly labelled plan.
+- Added documentation reads as a concise overview: a new developer can grasp the general idea without reading the whole page. Length is a defect when the same idea fits in fewer words.
 - All documentation obligations triggered by the task are satisfied. A changelog generated from commit messages is never a documentation target.
 - Repository-defined documentation formatting or link checks pass when configured.
 - Only in-scope documentation files changed, and the handoff lists each file and the reason it changed.
