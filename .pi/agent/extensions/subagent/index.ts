@@ -34,7 +34,9 @@
  *     the editor lists every worker with its roadmap item, current stage,
  *     elapsed time, stage progress, and tokens, plus assembled-item totals from
  *     the orchestrator's wave state. Drawn by the dispatching process, because
- *     the wave itself runs in a child without a UI. Display only.
+ *     the wave itself runs in a child without a UI. When the dispatch ends the
+ *     table stops ticking and every row is terminal: `interrupted` (`!`) marks a
+ *     worker that never reported a result. Display only.
  */
 
 import { spawn } from "node:child_process";
@@ -131,6 +133,9 @@ function stopRunTimer() {
  * nested subagent events already carry the child's live dispatch details upward, and this
  * block flattens them into one row per roadmap item. Display only — it never writes state,
  * never reorders a dispatch, and has no effect on validation.
+ *
+ * Rows are terminal once the dispatch that published them ends; `interrupted` means the
+ * worker produced no result before the call finished, so its elapsed time stops there.
  */
 const WAVE_WIDGET = "wave-workers";
 
@@ -140,7 +145,7 @@ const WAVE_STAGE_TOTAL = 6;
 /** Item outcomes that mean the commit exists on the wave branch. */
 const WAVE_ASSEMBLED = new Set(["assembled", "committed", "merged", "done", "complete", "completed"]);
 
-type WaveRowState = "queued" | "running" | "waiting" | "done" | "failed";
+export type WaveRowState = "queued" | "running" | "waiting" | "done" | "failed" | "interrupted";
 
 const WAVE_GLYPH: Record<WaveRowState, string> = {
 	queued: "◌",
@@ -148,6 +153,7 @@ const WAVE_GLYPH: Record<WaveRowState, string> = {
 	waiting: "⏸",
 	done: "✓",
 	failed: "✗",
+	interrupted: "!",
 };
 
 const WAVE_COLOR: Record<WaveRowState, WaveColor> = {
@@ -156,9 +162,10 @@ const WAVE_COLOR: Record<WaveRowState, WaveColor> = {
 	waiting: "muted",
 	done: "success",
 	failed: "error",
+	interrupted: "warning",
 };
 
-interface WaveRow {
+export interface WaveRow {
 	itemId: string;
 	state: WaveRowState;
 	stage?: string;
@@ -168,7 +175,7 @@ interface WaveRow {
 	tokens: number;
 }
 
-interface WaveView {
+export interface WaveView {
 	waveId?: string;
 	rows: WaveRow[];
 	startedAt: number;
@@ -186,7 +193,7 @@ type WaveTheme = ExtensionContext["ui"]["theme"];
 type WaveColor = Parameters<WaveTheme["fg"]>[0];
 
 /** A parallel dispatch is a wave when two or more of its tasks carry `workType: wave`. */
-function isWaveDispatch(details: SubagentDetails | undefined): boolean {
+export function isWaveDispatch(details: SubagentDetails | undefined): boolean {
 	if (!details || details.mode !== "parallel" || details.results.length < 2) return false;
 	return details.results.filter((result) => result.workType === "wave").length >= 2;
 }
@@ -196,14 +203,16 @@ function isWaveDispatch(details: SubagentDetails | undefined): boolean {
  *
  * The dispatcher sees the wave two levels down: itself, the orchestrator it called, and the
  * orchestrator's parallel call. Bounded depth keeps a pathological tree from being walked.
+ * A nested run's final `details` win over its `liveDetails`: streaming only fills liveDetails,
+ * so reading live first would keep a stale snapshot after the terminal toolResult arrived.
  */
-function findWaveDispatch(details: SubagentDetails | undefined, depth = 3): SubagentDetails | undefined {
+export function findWaveDispatch(details: SubagentDetails | undefined, depth = 3): SubagentDetails | undefined {
 	if (!details || depth < 0) return undefined;
 	if (isWaveDispatch(details)) return details;
 	for (const result of details.results ?? []) {
 		// A liveDetails payload arrives deserialized from a child; never assume the arrays are there.
 		for (const nested of result.nestedSubagents ?? []) {
-			const found = findWaveDispatch(nested.liveDetails, depth - 1);
+			const found = findWaveDispatch(nested.details, depth - 1) ?? findWaveDispatch(nested.liveDetails, depth - 1);
 			if (found) return found;
 		}
 	}
@@ -252,11 +261,15 @@ function tokensOf(usage: { input?: number; output?: number; cacheRead?: number; 
  *
  * `waiting` is the state the table exists to expose: the round is a barrier, so an item that
  * returned early is idle until the slowest item finishes.
+ *
+ * `endedAt` is the instant the dispatch was learned to be over. It makes the view terminal:
+ * nothing is `active`, so finished rows read `done` instead of `waiting`, and a started row
+ * that never reported a result becomes `interrupted` with its elapsed time frozen there.
  */
-function waveViewFrom(details: SubagentDetails | undefined, now: number): WaveView | undefined {
+export function waveViewFrom(details: SubagentDetails | undefined, now: number, endedAt?: number): WaveView | undefined {
 	const wave = findWaveDispatch(details);
 	if (!wave) return undefined;
-	const active = wave.results.some((result) => result.startedAt > 0 && result.finishedAt === undefined);
+	const active = endedAt === undefined && wave.results.some((result) => result.startedAt > 0 && result.finishedAt === undefined);
 	const rows: WaveRow[] = [];
 	let startedAt = now;
 	let cost = 0;
@@ -275,9 +288,14 @@ function waveViewFrom(details: SubagentDetails | undefined, now: number): WaveVi
 				state = "failed";
 				elapsedMs = (result.finishedAt ?? now) - result.startedAt;
 			} else if (result.finishedAt === undefined) {
-				state = "running";
 				const stageStart = current && current.finishedAt === undefined ? current.startedAt : result.startedAt;
-				elapsedMs = now - stageStart;
+				if (endedAt === undefined) {
+					state = "running";
+					elapsedMs = now - stageStart;
+				} else {
+					state = "interrupted";
+					elapsedMs = endedAt - stageStart;
+				}
 			} else if (active) {
 				state = "waiting";
 				elapsedMs = now - result.finishedAt;
@@ -392,7 +410,7 @@ function segLength(segs: WaveSeg[]): number {
  * Columns are dropped right to left as the terminal narrows; the item id is never dropped,
  * because it is the only column that says which work is at risk.
  */
-function formatWaveWidget(
+export function formatWaveWidget(
 	view: WaveView,
 	totals: WaveTotals | undefined,
 	width: number,
@@ -471,10 +489,17 @@ function formatWaveWidget(
 				? "\u2014 waiting"
 				: row.state === "queued"
 					? "\u2014"
-					: retrying
-						? `${row.stage ?? "\u2014"}(retry ${row.retries + 1})`
-						: (row.stage ?? "\u2014");
-		const stageColor: WaveColor = row.state === "failed" ? "error" : row.state === "running" ? "warning" : "dim";
+					: row.state === "interrupted"
+						? "\u2014 interrupted"
+						: retrying
+							? `${row.stage ?? "\u2014"}(retry ${row.retries + 1})`
+							: (row.stage ?? "\u2014");
+		const stageColor: WaveColor =
+			row.state === "failed"
+				? "error"
+				: row.state === "running" || row.state === "interrupted"
+					? "warning"
+					: "dim";
 		const elapsedText = row.state === "queued" ? "\u2014" : formatElapsed(row.elapsedMs);
 		const tokenText = row.tokens >= 1000 ? `${Math.round(row.tokens / 1000)}k tok` : `${row.tokens} tok`;
 		const done = Math.max(0, Math.min(WAVE_STAGE_TOTAL, row.stagesDone));
@@ -510,16 +535,32 @@ function formatWaveWidget(
 let waveDetails: SubagentDetails | undefined;
 let waveCtx: ExtensionContext | undefined;
 let waveInterval: ReturnType<typeof setInterval> | null = null;
+/** Tool-call id that owns the current table, so another call cannot settle it. */
+let waveToolCallId: string | undefined;
+/**
+ * Runner UI context the table was published through. This is the session handle, not the
+ * `ExtensionContext` wrapper: Pi builds a fresh wrapper for every emission, so comparing
+ * wrappers would never match the call that published.
+ */
+let waveUI: unknown;
+/** Instant the owning call was learned to be over; present = the table is frozen. */
+let waveEndedAt: number | undefined;
 
 function tickWave(): void {
 	if (!waveCtx || !waveDetails) return;
-	const view = waveViewFrom(waveDetails, Date.now());
-	if (!view) return;
+	const ctx = waveCtx;
+	const now = waveEndedAt ?? Date.now();
+	const view = waveViewFrom(waveDetails, now, waveEndedAt);
+	if (!view) {
+		// Nothing to draw any more: drop the widget instead of leaving the last one behind.
+		clearWave();
+		return;
+	}
 	const width = process.stdout.columns ?? 100;
 	try {
-		waveCtx.ui.setWidget(
+		ctx.ui.setWidget(
 			WAVE_WIDGET,
-			formatWaveWidget(view, readWaveTotals(view.waveId, waveCtx.cwd), width, waveCtx.ui.theme, Date.now()),
+			formatWaveWidget(view, readWaveTotals(view.waveId, ctx.cwd), width, ctx.ui.theme, now),
 			{ placement: "aboveEditor" },
 		);
 	} catch {
@@ -527,12 +568,56 @@ function tickWave(): void {
 	}
 }
 
+/**
+ * The stable session handle behind an `ExtensionContext`.
+ *
+ * `ExtensionRunner.createContext()` returns a new object literal per call and `emit()` builds
+ * one per event, so two contexts for the same session are never the same object
+ * (dist/core/extensions/runner.js:613-621 + :813-814). What is stable is the runner's
+ * `uiContext`: `get ui()` returns `runner.uiContext`, which only `setUIContext()` replaces at
+ * bind/reload time (:355-356, :402). Comparing it identifies the session without depending on
+ * wrapper identity. Guarded because the getter calls `assertActive()` and throws once the
+ * runner is stale.
+ */
+function waveUIOf(ctx: ExtensionContext | undefined): unknown {
+	try {
+		return ctx?.ui;
+	} catch {
+		return undefined;
+	}
+}
+
 /** Publish a dispatch's details for the live table. Cheap and idempotent; safe to call per update. */
-function publishWave(details: SubagentDetails | undefined, ctx: ExtensionContext): void {
+export function publishWave(details: SubagentDetails | undefined, ctx: ExtensionContext, toolCallId?: string): void {
 	if (!ctx.hasUI || !details || !findWaveDispatch(details)) return;
 	waveDetails = details;
 	waveCtx = ctx;
+	waveUI = waveUIOf(ctx);
+	waveToolCallId = toolCallId;
+	// A resumed stream un-freezes the table: new data means the call is still alive.
+	waveEndedAt = undefined;
 	if (!waveInterval) waveInterval = setInterval(tickWave, LIVE_TICK_MS);
+	tickWave();
+}
+
+/**
+ * The owning call ended: freeze the table in place and stop ticking.
+ *
+ * Final `details` are adopted when they carry the wave (a clean end shows real rows);
+ * otherwise the last streamed snapshot is rendered with `interrupted` rows, because the
+ * workers that never reported are exactly what the table exists to show. The widget stays
+ * on screen until the next `agent_start` clears it.
+ */
+export function settleWave(ctx: ExtensionContext, toolCallId: string | undefined, details?: SubagentDetails): void {
+	// Same session, not same wrapper object: the ctx Pi hands to this handler is a fresh one.
+	if (!waveDetails || !waveCtx || !waveUI || waveUI !== waveUIOf(ctx)) return;
+	if (waveToolCallId !== toolCallId) return;
+	if (details && findWaveDispatch(details)) waveDetails = details;
+	waveEndedAt ??= Date.now();
+	if (waveInterval) {
+		clearInterval(waveInterval);
+		waveInterval = null;
+	}
 	tickWave();
 }
 
@@ -542,9 +627,14 @@ function freezeWave(): void {
 		clearInterval(waveInterval);
 		waveInterval = null;
 	}
+	// Freeze at settlement time when it is known, so the frozen rows agree with the last render.
+	if (waveDetails) waveEndedAt ??= Date.now();
 	tickWave();
 	waveDetails = undefined;
 	waveCtx = undefined;
+	waveUI = undefined;
+	waveToolCallId = undefined;
+	waveEndedAt = undefined;
 }
 
 function clearWave(): void {
@@ -561,6 +651,9 @@ function clearWave(): void {
 	}
 	waveDetails = undefined;
 	waveCtx = undefined;
+	waveUI = undefined;
+	waveToolCallId = undefined;
+	waveEndedAt = undefined;
 }
 
 /**
@@ -808,7 +901,7 @@ interface UsageStats {
 	turns: number;
 }
 
-interface SingleResult {
+export interface SingleResult {
 	agent: string;
 	agentSource: "user" | "project" | "unknown";
 	task: string;
@@ -838,7 +931,7 @@ interface SingleResult {
 	nestedSubagents: NestedSubagentRun[];
 }
 
-interface SubagentDetails {
+export interface SubagentDetails {
 	mode: "single" | "parallel" | "chain";
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
@@ -1307,6 +1400,13 @@ export default function (pi: ExtensionAPI) {
 		stopRunTimer();
 		freezeWave();
 	});
+	// Every finalized tool call ends here, including blocked and aborted ones, so this is the
+	// only place the table learns that the wave dispatch it was drawing has returned. Without
+	// it the last streamed snapshot stays on screen and keeps claiming to be live.
+	pi.on("tool_execution_end", async (event, ctx) => {
+		if (event.toolName !== "subagent") return;
+		settleWave(ctx, event.toolCallId, event.result?.details as SubagentDetails | undefined);
+	});
 	pi.on("session_shutdown", async () => {
 		stopRunTimer();
 		clearWave();
@@ -1351,7 +1451,7 @@ export default function (pi: ExtensionAPI) {
 		].join(" "),
 		parameters: SubagentParams,
 
-		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+		async execute(toolCallId, params, signal, onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? "user";
 			const dispatchDefaults: DispatchDefaults = {
 				model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
@@ -1504,7 +1604,7 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				const emitParallelUpdate = () => {
-					publishWave(makeDetails("parallel")([...allResults]), ctx);
+					publishWave(makeDetails("parallel")([...allResults]), ctx, toolCallId);
 					if (onUpdate) {
 						const running = allResults.filter((r) => r.exitCode === -1).length;
 						const done = allResults.filter((r) => r.exitCode !== -1).length;
@@ -1573,7 +1673,7 @@ export default function (pi: ExtensionAPI) {
 					undefined,
 					signal,
 					(partial) => {
-						publishWave(partial.details, ctx);
+						publishWave(partial.details, ctx, toolCallId);
 						if (onUpdate) onUpdate(partial);
 					},
 					makeDetails("single"),
