@@ -35,7 +35,7 @@ Review only. Evaluate the final production and test diff independently after imp
 When the contract carries `worktreePath` and `baseCommit`, review only what changed in that worktree.
 
 - Diff the worktree against its `baseCommit`: `git -C <worktreePath> diff <baseCommit>`, plus `git -C <worktreePath> status --porcelain` to surface untracked files. The builder does not commit, so a `<baseCommit>...HEAD` range would be empty.
-- On a single-item route (`small`, `normal`, `large`, `documentation`) that worktree holds the whole change: review all of it against the approved plan and the assigned acceptance criteria. Never read, diff, or review the primary checkout, which may hold unrelated user work, and never approve a change you only saw outside the worktree.
+- On a single-item route (`small`, `normal`, `large`) that worktree holds the whole change: review all of it against the approved plan and the assigned acceptance criteria. Never read, diff, or review the primary checkout, which may hold unrelated user work, and never approve a change you only saw outside the worktree.
 
 In a wave, the worktree holds exactly one roadmap item.
 - Review only that worktree. Never review the whole wave, a sibling worktree, or the assembled result; cross-item coherence belongs to the integration reviewer.

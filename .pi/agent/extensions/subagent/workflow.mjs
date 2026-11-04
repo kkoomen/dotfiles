@@ -250,12 +250,11 @@ export function validatePriorRecords(contract, cwd, agentName) {
         'document-agent',
         'formatter-agent',
       ],
-      documentation: ['document-agent', 'formatter-agent'],
       wave: ['build-agent', 'code-review-agent', 'formatter-agent'],
     }
     const configured = routes[contract.workType]
     if (!configured)
-      return 'Commit requires contract.workType: small, normal, large, wave, or documentation'
+      return 'Commit requires contract.workType: small, normal, large, or wave'
     if (!contract.expectedSnapshot) return 'Commit requires a current expectedSnapshot'
     const required = [...configured]
     if (contract.documentRequired !== false && ['small', 'normal', 'wave'].includes(contract.workType))

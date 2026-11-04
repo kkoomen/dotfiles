@@ -27,7 +27,7 @@
  *   - Expanded view shows the agent's final verdict first, then the
  *     full activity trace.
  *   - Work type and mode on every line: the call and each result show the
- *     contract's `workType` (small, normal, large, wave, documentation),
+ *     contract's `workType` (small, normal, large, wave),
  *     and parallel/chain dispatches list it per task, so a serial dispatch
  *     is distinguishable from a wave at a glance.
  *   - Live wave worker table: while a wave dispatch is running, a widget above
@@ -905,7 +905,7 @@ export interface SingleResult {
 	agent: string;
 	agentSource: "user" | "project" | "unknown";
 	task: string;
-	/** Work type from the dispatch contract: small, normal, large, wave, or documentation. */
+	/** Work type from the dispatch contract: small, normal, large, or wave. */
 	workType?: string;
 	/** Roadmap item this dispatch belongs to, copied from the contract so the live wave table can name it. */
 	itemId?: string;
@@ -1345,7 +1345,7 @@ const ContractSchema = Type.Object({
 	plan: Type.Optional(Type.String()),
 	priorRecords: Type.Optional(Type.Array(Type.String())),
 	expectedSnapshot: Type.Optional(Type.String()),
-	workType: Type.Optional(StringEnum(["small", "normal", "large", "wave", "documentation"] as const)),
+	workType: Type.Optional(StringEnum(["small", "normal", "large", "wave"] as const)),
 	documentRequired: Type.Optional(Type.Boolean()),
 	// Wave fields, documented in agents/HANDOFF.md. Declared here because the schema is the
 	// only description of the contract a dispatching agent sees: an undeclared field is one a

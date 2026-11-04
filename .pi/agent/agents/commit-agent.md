@@ -42,7 +42,7 @@ Every orchestrator dispatch commits inside a worktree, so `worktreePath` and `ba
 
 ### Single-Route Worktree Mode
 
-When the contract carries a `workType` of `small`, `normal`, `large`, or `documentation` with `worktreePath` and `baseCommit`, create the route's single commit inside that worktree, on branch `route/<taskId>`, against `baseCommit`.
+When the contract carries a `workType` of `small`, `normal`, `large`, or `wave` with `worktreePath` and `baseCommit`, create the route's single commit inside that worktree, on branch `route/<taskId>`, against `baseCommit`.
 
 - Stage and commit inside `<worktreePath>` only. The builder's working tree is the content, so the commit records exactly what review examined.
 - Commit on the branch the worktree was created with; never `git checkout` another branch, never stage from the primary checkout, and never reach outside the worktree.
