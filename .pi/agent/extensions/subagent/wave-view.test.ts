@@ -22,11 +22,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
+	clearWave,
 	findWaveDispatch,
 	formatWaveWidget,
 	isWaveDispatch,
 	publishWave,
 	settleWave,
+	startRunTimer,
+	stopRunTimer,
+	tickRunTimer,
 	waveViewFrom,
 	type SingleResult,
 	type SubagentDetails,
@@ -221,4 +225,161 @@ test("settleWave freezes the owning call only, and writes no wave state", () => 
 	// Clean up the interval this test started, through the context that owns it.
 	settleWave(settleCtx, "call-2");
 	expect(String(rendered.at(-1)!.join("\n"))).not.toContain("▶");
+});
+
+/**
+ * A UI stub that copies Pi's widget bookkeeping instead of just recording writes.
+ *
+ * `setExtensionWidget` disposes and removes the key from both placement maps and then
+ * re-inserts it at the end of the target map
+ * (dist/modes/interactive/interactive-mode.js:1938-1962), and the container is built by
+ * appending `map.values()` in insertion order. So the map order below is the on-screen order:
+ * key 0 renders highest, the last key renders lowest, directly above the editor.
+ *
+ * It also copies the line cap: the container takes only the first `PI_MAX_WIDGET_LINES` entries
+ * and appends a muted notice when the write was longer (:1958-1961, `MAX_WIDGET_LINES = 10`
+ * at :2014). A stub without that cap cannot see a strip being sliced off, which is exactly how
+ * a timer at the end of the array can disappear from a real terminal.
+ */
+const PI_MAX_WIDGET_LINES = 10;
+const WIDGET_TRUNCATION_NOTICE = "... (widget truncated)";
+
+function makePiUI() {
+	const aboveEditor = new Map<string, string[] | undefined>();
+	const ui = {
+		theme,
+		/** Top-to-bottom rows of the above-editor area, as Pi would paint them. */
+		render(): string[] {
+			return [...aboveEditor.values()].flatMap((lines) => lines ?? []);
+		},
+		/** Live keys, highest first. */
+		keys(): string[] {
+			return [...aboveEditor.keys()];
+		},
+		setWidget(key: string, content?: string[], options?: { placement?: string }) {
+			expect(options?.placement ?? "aboveEditor").toBe("aboveEditor");
+			// removeExisting(): dispose the old component, delete the key, then re-insert.
+			aboveEditor.delete(key);
+			if (content === undefined) return;
+			// The container renders the first MAX_WIDGET_LINES entries, then the notice.
+			const rows = content.slice(0, PI_MAX_WIDGET_LINES);
+			if (content.length > PI_MAX_WIDGET_LINES) rows.push(WIDGET_TRUNCATION_NOTICE);
+			aboveEditor.set(key, rows);
+		},
+	};
+	return ui;
+}
+
+/** Wave rows must be the leading rows and the timer the last row. */
+function expectWaveAboveTimer(ui: ReturnType<typeof makePiUI>) {
+	const rows = ui.render();
+	const timerRow = rows.findIndex((row) => /^[\u23f3\u23f1]/.test(row));
+	const waveRow = rows.findIndex((row) => row.includes("item/01-a"));
+	expect(waveRow).toBeGreaterThanOrEqual(0);
+	expect(timerRow).toBeGreaterThan(waveRow);
+	// Nothing renders below the timer: it is the strip closest to the editor.
+	expect(timerRow).toBe(rows.length - 1);
+}
+
+test("two widget keys under one placement flip on the last write (the pre-fix defect)", () => {
+	const ui = makePiUI();
+	ui.setWidget("run-timer", ["\u23f3 0:01"]);
+	ui.setWidget("wave-workers", ["WAVE"]);
+	// The wave table is written last, so it lands closest to the editor: the reported bug.
+	expect(ui.render()).toEqual(["\u23f3 0:01", "WAVE"]);
+	ui.setWidget("run-timer", ["\u23f3 0:02"]);
+	expect(ui.render()).toEqual(["WAVE", "\u23f3 0:02"]);
+});
+
+test("the wave table renders above the run timer for every tick interleaving", () => {
+	const ui = makePiUI();
+	const ctx = makeCtx(ui as any);
+
+	// Module state outlives a test, so start from no table and no timer.
+	clearWave();
+	startRunTimer(ui as any);
+	expect(ui.keys()).toEqual(["run-status"]);
+	expect(ui.render()).toEqual([expect.stringMatching(/^\u23f3 /)]);
+
+	// wave tick, then timer tick.
+	publishWave(liveWave, ctx, "call-order");
+	expectWaveAboveTimer(ui);
+	tickRunTimer();
+	expectWaveAboveTimer(ui);
+
+	// timer tick, then wave tick.
+	tickRunTimer();
+	expectWaveAboveTimer(ui);
+	publishWave(liveWave, ctx, "call-order");
+	expectWaveAboveTimer(ui);
+
+	// Repeated alternation in both directions: neither order can win a slot.
+	for (let i = 0; i < 5; i += 1) {
+		tickRunTimer();
+		publishWave(liveWave, ctx, "call-order");
+		expectWaveAboveTimer(ui);
+		publishWave(liveWave, ctx, "call-order");
+		tickRunTimer();
+		expectWaveAboveTimer(ui);
+	}
+
+	// The timer's stop path writes the final "⏱" value after a wave render.
+	stopRunTimer();
+	expect(ui.render().at(-1)).toMatch(/^\u23f1 /);
+	expectWaveAboveTimer(ui);
+
+	// A frozen/settled table keeps its slot above that final timer value.
+	settleWave(ctx, "call-order", finalWave);
+	expectWaveAboveTimer(ui);
+	expect(ui.render().at(-1)).toMatch(/^\u23f1 /);
+
+	// Still valid once the frozen rows stop ticking.
+	tickRunTimer();
+	expectWaveAboveTimer(ui);
+	stopRunTimer();
+	expectWaveAboveTimer(ui);
+});
+
+/** A full round: eight workers, the most one parallel dispatch runs at once. */
+const fullWave = parallel(
+	Array.from({ length: 8 }, (_, i) => worker({ itemId: `item/0${i + 1}-${String.fromCharCode(97 + i)}` })),
+);
+
+test("a full 8-worker table plus a running timer keeps the timer as the last rendered row", () => {
+	const ui = makePiUI();
+	const ctx = makeCtx(ui as any);
+
+	// Module state outlives a test, so start from a known state.
+	clearWave();
+	startRunTimer(ui as any);
+
+	// This table alone is longer than Pi's cap (3 header lines + 8 rows + border = 12), so an
+	// uncapped wave portion pushes the timer past the slice and it vanishes for the whole round.
+	publishWave(fullWave, ctx, "call-full");
+	const rows = ui.render();
+	// The timer is the row that must survive: it is the strip closest to the editor.
+	expect(rows.at(-1)).toMatch(/^\u23f3 /);
+	expect(rows).not.toContain(WIDGET_TRUNCATION_NOTICE);
+	expect(rows).toHaveLength(PI_MAX_WIDGET_LINES);
+	// The budget the timer does not need is still spent on the table's rows: 10 lines minus the
+	// 3 header lines and the 1 timer line leaves 6 of the 8 worker rows.
+	expect(rows.filter((row) => row.includes("item/"))).toHaveLength(PI_MAX_WIDGET_LINES - 4);
+	expectWaveAboveTimer(ui);
+
+	// Every 1 Hz refresh of either widget keeps the same shape, in both orders.
+	for (let i = 0; i < 3; i += 1) {
+		tickRunTimer();
+		expectWaveAboveTimer(ui);
+		expect(ui.render()).toHaveLength(PI_MAX_WIDGET_LINES);
+		publishWave(fullWave, ctx, "call-full");
+		expectWaveAboveTimer(ui);
+		expect(ui.render().at(-1)).toMatch(/^\u23f3 /);
+	}
+
+	// The stop path's final "\u23f1" line is the last rendered row too.
+	stopRunTimer();
+	expect(ui.render().at(-1)).toMatch(/^\u23f1 /);
+	expectWaveAboveTimer(ui);
+
+	clearWave();
 });

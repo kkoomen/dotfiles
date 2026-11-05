@@ -73,8 +73,65 @@ const NESTED_MAX_NODES = 12;
 /** Live re-render tick for running subagent timers (1 Hz). */
 const LIVE_TICK_MS = 1000;
 
-/** Widget key for the global run timer. */
-const RUN_TIMER_WIDGET = "run-timer";
+/**
+ * Lines Pi renders for one widget key before it cuts the rest.
+ *
+ * `setExtensionWidget` wraps a string array in a container built from
+ * `content.slice(0, InteractiveMode.MAX_WIDGET_LINES)` and appends a muted
+ * "... (widget truncated)" line once `content.length > MAX_WIDGET_LINES`
+ * (dist/modes/interactive/interactive-mode.js:1958-1961, with
+ * `static MAX_WIDGET_LINES = 10` at :2014). The slice takes from the front, so every line past
+ * the cap is dropped.
+ */
+const PI_MAX_WIDGET_LINES = 10;
+
+/**
+ * Widget key for every above-editor strip this extension draws.
+ *
+ * One key, not one per strip. Pi's `setExtensionWidget` disposes and removes the existing key
+ * and then re-inserts it at the end of the placement's map
+ * (dist/modes/interactive/interactive-mode.js:1938-1962: `removeExisting(map)` →
+ * `map.delete(key)` → `targetMap.set(key, component)`), and the widget container is built by
+ * appending `map.values()` in insertion order, so the last-written key renders lowest,
+ * closest to the editor. Two keys under one placement therefore swap vertical order on
+ * whichever 1 Hz tick wrote last. Writing both strips through one key makes the order a plain
+ * array order instead: compare `paintRunStatus` (`waveLines` then `runTimerLines`).
+ */
+const RUN_STATUS_WIDGET = "run-status";
+
+/** Run timer text: last in the widget, so it sits directly above the editor. */
+let runTimerLines: string[] | undefined;
+/** Wave table text: first in the widget, so it stays above the run timer. */
+let waveLines: string[] | undefined;
+/** UI handle the shared widget was last painted through (Pi's stable session UI context). */
+let runStatusUI: ExtensionContext["ui"] | undefined;
+
+/**
+ * Repaint the shared above-editor widget: wave table first, run timer last.
+ *
+ * The vertical order is fixed here by array order, so no tick can displace the other strip,
+ * and a strip that is absent simply contributes no lines.
+ *
+ * Pi slices one widget's array to its first `PI_MAX_WIDGET_LINES` lines and the run timer is
+ * the last entry, so the table is capped to whatever the timer leaves inside that budget. The
+ * reservation is what keeps the timer line from ever being sliced off: a normal 8-worker table
+ * already fills the budget on its own. Only how many table lines fit changes here -- the table
+ * itself is still drawn by `formatWaveWidget`, unchanged. With no timer present the budget is
+ * the whole cap, so an oversized table is cut here instead of by Pi.
+ */
+function paintRunStatus(ui?: ExtensionContext["ui"]): void {
+	if (ui) runStatusUI = ui;
+	if (!runStatusUI) return;
+	const timer = runTimerLines ?? [];
+	// Derived from the timer rather than hardcoding one line, so a taller timer keeps its space.
+	const waveBudget = Math.max(0, PI_MAX_WIDGET_LINES - timer.length);
+	const lines = [...(waveLines ?? []).slice(0, waveBudget), ...timer];
+	try {
+		runStatusUI.setWidget(RUN_STATUS_WIDGET, lines.length > 0 ? lines : undefined, { placement: "aboveEditor" });
+	} catch {
+		/* TUI may be gone; ignore */
+	}
+}
 
 function formatDuration(ms: number): string {
 	const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -93,16 +150,13 @@ let runTimerStart = 0;
 let runTimerInterval: ReturnType<typeof setInterval> | null = null;
 let runTimerUI: ExtensionContext["ui"] | undefined;
 
-function tickRunTimer() {
+export function tickRunTimer() {
 	if (!runTimerUI || !runTimerStart) return;
-	try {
-		runTimerUI.setWidget(RUN_TIMER_WIDGET, [`⏳ ${formatDuration(Date.now() - runTimerStart)}`]);
-	} catch {
-		/* TUI may be gone; ignore */
-	}
+	runTimerLines = [`⏳ ${formatDuration(Date.now() - runTimerStart)}`];
+	paintRunStatus(runTimerUI);
 }
 
-function startRunTimer(ui: ExtensionContext["ui"]) {
+export function startRunTimer(ui: ExtensionContext["ui"]) {
 	runTimerStart = Date.now();
 	runTimerUI = ui;
 	if (runTimerInterval) clearInterval(runTimerInterval);
@@ -110,17 +164,14 @@ function startRunTimer(ui: ExtensionContext["ui"]) {
 	runTimerInterval = setInterval(tickRunTimer, LIVE_TICK_MS);
 }
 
-function stopRunTimer() {
+export function stopRunTimer() {
 	if (runTimerInterval) {
 		clearInterval(runTimerInterval);
 		runTimerInterval = null;
 	}
 	if (runTimerUI && runTimerStart) {
-		try {
-			runTimerUI.setWidget(RUN_TIMER_WIDGET, [`⏱ ${formatDuration(Date.now() - runTimerStart)}`]);
-		} catch {
-			/* ignore */
-		}
+		runTimerLines = [`⏱ ${formatDuration(Date.now() - runTimerStart)}`];
+		paintRunStatus(runTimerUI);
 	}
 	runTimerStart = 0;
 }
@@ -136,8 +187,10 @@ function stopRunTimer() {
  *
  * Rows are terminal once the dispatch that published them ends; `interrupted` means the
  * worker produced no result before the call finished, so its elapsed time stops there.
+ *
+ * The table is one part of the shared `RUN_STATUS_WIDGET` widget, painted above the run timer
+ * by `paintRunStatus`, so a wave tick and a timer tick can never swap places.
  */
-const WAVE_WIDGET = "wave-workers";
 
 /** Route length used for the per-item stage dots; a repair round repeats stages. */
 const WAVE_STAGE_TOTAL = 6;
@@ -557,15 +610,8 @@ function tickWave(): void {
 		return;
 	}
 	const width = process.stdout.columns ?? 100;
-	try {
-		ctx.ui.setWidget(
-			WAVE_WIDGET,
-			formatWaveWidget(view, readWaveTotals(view.waveId, ctx.cwd), width, ctx.ui.theme, now),
-			{ placement: "aboveEditor" },
-		);
-	} catch {
-		/* TUI may be gone; ignore */
-	}
+	waveLines = formatWaveWidget(view, readWaveTotals(view.waveId, ctx.cwd), width, ctx.ui.theme, now);
+	paintRunStatus(ctx.ui);
 }
 
 /**
@@ -637,23 +683,21 @@ function freezeWave(): void {
 	waveEndedAt = undefined;
 }
 
-function clearWave(): void {
+export function clearWave(): void {
 	if (waveInterval) {
 		clearInterval(waveInterval);
 		waveInterval = null;
 	}
-	if (waveCtx) {
-		try {
-			waveCtx.ui.setWidget(WAVE_WIDGET, undefined);
-		} catch {
-			/* ignore */
-		}
-	}
+	// The table shares one widget with the run timer, so dropping it is a repaint without its
+	// lines, not a removal: the timer strip must survive the table going away.
+	const hadCtx = waveCtx !== undefined;
+	waveLines = undefined;
 	waveDetails = undefined;
 	waveCtx = undefined;
 	waveUI = undefined;
 	waveToolCallId = undefined;
 	waveEndedAt = undefined;
+	if (hadCtx) paintRunStatus();
 }
 
 /**
@@ -1411,11 +1455,14 @@ export default function (pi: ExtensionAPI) {
 		stopRunTimer();
 		clearWave();
 		try {
-			runTimerUI?.setWidget(RUN_TIMER_WIDGET, undefined);
+			runStatusUI?.setWidget(RUN_STATUS_WIDGET, undefined);
 		} catch {
 			/* ignore */
 		}
+		runTimerLines = undefined;
+		waveLines = undefined;
 		runTimerUI = undefined;
+		runStatusUI = undefined;
 	});
 
 	// Forward an interactive steering message into every running subagent
