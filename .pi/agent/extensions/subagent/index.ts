@@ -50,6 +50,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import {
 	CONFIG_DIR_NAME,
 	type ExtensionAPI,
+	type ExtensionCommandContext,
 	type ExtensionContext,
 	getAgentDir,
 	getMarkdownTheme,
@@ -1128,6 +1129,282 @@ function writeRpcCommand(child: ActiveSubagent, command: Record<string, unknown>
 	}
 }
 
+/**
+ * `/steer <message>` delivers text into the current run; `/queue <message>` queues it as a
+ * follow-up. A running child receives `{type:"steer"}` or `{type:"follow_up"}`. With no
+ * running child the parent takes it instead: idle sends normally, a streaming parent is
+ * steered (or gets `deliverAs: "followUp"` for /queue). Both commands print usage when the
+ * message is empty.
+ *
+ * The commands and the interactive `input` handler enter the same `beginDelivery()` path, so
+ * a forwarded steer cannot diverge between them. Per submission the user sees one immediate
+ * notice and at most one resolved summary; nothing is shown when `ctx.hasUI` is false. A
+ * submission that reaches no child falls back to parent delivery, so text is never lost; a
+ * partially delivered one is forwarded to the children that accepted it and its failures are
+ * reported in the summary.
+ *
+ * A summary names each target's disposition: `queued`, `consumed by an input handler`,
+ * `rejected by child`, `not delivered (stdin closed)`, `no confirmation after 2s` (the
+ * `DELIVERY_CONFIRM_TIMEOUT_MS` window), `child exited before confirming`, or `accepted` when
+ * a success carries no known disposition.
+ *
+ * Each forwarded command carries a unique string id, `delivery-<n>`. The child echoes it on
+ * its `{type:"response"}` line, `processLine` hands that line to `settleDelivery()`, and the
+ * echoed id selects the pending batch. Unknown and already-settled ids are ignored, so the
+ * rest of the event stream is untouched.
+ *
+ * The `input` handler keeps its own contract: `action: "continue"` when nothing was
+ * forwarded (Pi delivers the typed steer itself), `action: "handled"` when it was.
+ */
+
+/** RPC command type that carries one delivery into a child. */
+export type DeliveryMode = "steer" | "follow_up";
+
+/** Immediate notice or resolved summary sink; absent when there is no terminal UI. */
+export type DeliveryNotify = (message: string, type?: "info" | "warning" | "error") => void;
+
+/** Where the parent received a message because no child accepted it. */
+export type ParentDisposition = "started" | "steered" | "queued";
+
+export interface DeliveryBatch {
+	mode: DeliveryMode;
+	text: string;
+	/** Commands a child accepted on stdin, in dispatch order. */
+	written: { agent: string; requestId: string }[];
+	/** Targets whose stdin was already closed; never counted as forwarded. */
+	failed: { agent: string; reason: string }[];
+	/** One resolved disposition per written request id. */
+	results: Map<string, { agent: string; outcome: string }>;
+	done: boolean;
+	/** Set when the parent received the message instead (command fallback, or a typed steer whose every write failed). */
+	parent?: ParentDisposition;
+	timer?: ReturnType<typeof setTimeout>;
+	notify?: DeliveryNotify;
+}
+
+/** How long a forwarded command waits for its RPC response before it is reported unconfirmed. */
+export const DELIVERY_CONFIRM_TIMEOUT_MS = 2000;
+const DELIVERY_TIMEOUT_OUTCOME = "no confirmation after 2s";
+const DELIVERY_WRITE_FAILURE = "not delivered (stdin closed)";
+const DELIVERY_CHILD_EXIT_OUTCOME = "child exited before confirming";
+const DELIVERY_REJECTED_OUTCOME = "rejected by child";
+/** Outcomes that need no warning; anything else is reported as a warning. */
+const DELIVERY_CLEAN_OUTCOMES = new Set(["queued", "consumed by an input handler", "accepted"]);
+
+let deliverySequence = 0;
+const pendingDeliveries = new Map<string, { batch: DeliveryBatch; agent: string; child: ActiveSubagent }>();
+
+/** The RPC command one delivery mode sends. Pure: the mapping table for both commands. */
+export function forwardCommandOf(mode: DeliveryMode): { type: "steer" | "follow_up" } {
+	return { type: mode };
+}
+
+/**
+ * Decide who receives a submission. A running child absorbs it (so the parent gets nothing,
+ * exactly like a typed steer); otherwise the parent receives it and the delivery mode follows
+ * whether the parent is streaming. Pure.
+ */
+export function planParentDelivery(
+	mode: DeliveryMode,
+	children: number,
+	parentIdle: boolean,
+): { forward: boolean; deliverAs?: "steer" | "followUp" } {
+	if (children > 0) return { forward: true };
+	if (parentIdle) return { forward: false };
+	return { forward: false, deliverAs: mode === "steer" ? "steer" : "followUp" };
+}
+
+function parentNotice(parent: ParentDisposition): string {
+	switch (parent) {
+		case "steered":
+			return "Steered the current run";
+		case "queued":
+			return "Queued for after the run";
+		default:
+			return "Started a new run";
+	}
+}
+
+/** One immediate line per submission: where it went, or why nothing accepted it. Pure. */
+export function submissionNotice(batch: DeliveryBatch): string {
+	const verb = batch.mode === "steer" ? "Steer" : "Queue";
+	if (batch.written.length > 0) {
+		const names = batch.written.map((w) => w.agent).join(", ");
+		return `${verb} -> ${batch.written.length} subagent${batch.written.length === 1 ? "" : "s"}: ${names}`;
+	}
+	const parent = batch.parent ? parentNotice(batch.parent) : "not delivered";
+	if (batch.failed.length === 0) return parent;
+	const reasons = batch.failed.map((f) => `${f.agent}: ${f.reason}`).join(", ");
+	return `${verb}: no running subagent accepted the message (${reasons}); ${parent}`;
+}
+
+/** The one summary line per resolved submission, naming every target's disposition. Pure. */
+export function deliverySummary(batch: DeliveryBatch): string {
+	const verb = batch.mode === "steer" ? "Steer" : "Queue";
+	const parts = batch.written.map((w) => {
+		const result = batch.results.get(w.requestId);
+		return `${w.agent} ${result ? result.outcome : DELIVERY_TIMEOUT_OUTCOME}`;
+	});
+	for (const failure of batch.failed) parts.push(`${failure.agent}: ${failure.reason}`);
+	return `${verb} accepted: ${parts.join(", ")}`;
+}
+
+/** `info` only when every target confirmed a clean disposition; otherwise a warning. Pure. */
+export function deliverySummaryType(batch: DeliveryBatch): "info" | "warning" {
+	if (batch.failed.length > 0) return "warning";
+	for (const result of batch.results.values()) {
+		if (!DELIVERY_CLEAN_OUTCOMES.has(result.outcome)) return "warning";
+	}
+	return "info";
+}
+
+function deliveryOutcome(event: { success?: boolean; data?: { disposition?: string }; error?: string }): string {
+	if (event.success === false) {
+		return event.error ? `${DELIVERY_REJECTED_OUTCOME} (${event.error})` : DELIVERY_REJECTED_OUTCOME;
+	}
+	const disposition = event.data?.disposition;
+	if (disposition === "handled") return "consumed by an input handler";
+	if (disposition === "queued") return "queued";
+	return "accepted";
+}
+
+function completeDelivery(batch: DeliveryBatch): void {
+	if (batch.done) return;
+	batch.done = true;
+	if (batch.timer) clearTimeout(batch.timer);
+	batch.timer = undefined;
+	// A batch that never forwarded anything is reported by its immediate notice only.
+	if (batch.written.length === 0) return;
+	batch.notify?.(deliverySummary(batch), deliverySummaryType(batch));
+}
+
+export interface BeginDeliveryOptions {
+	/** Images of an interactively typed steer; the commands are text-only. */
+	images?: unknown[];
+	notify?: DeliveryNotify;
+	/** Targets to forward to. Defaults to the live child set; tests inject fakes. */
+	targets?: ActiveSubagent[];
+	/** Test seam: override the confirmation window. Production always uses the constant. */
+	timeoutMs?: number;
+}
+
+/** Write one delivery into every target and start tracking its confirmations. */
+export function beginDelivery(mode: DeliveryMode, text: string, options: BeginDeliveryOptions = {}): DeliveryBatch {
+	const batch: DeliveryBatch = {
+		mode,
+		text,
+		written: [],
+		failed: [],
+		results: new Map(),
+		done: false,
+		notify: options.notify,
+	};
+	const targets = options.targets ?? [...activeSubagents];
+	const command = forwardCommandOf(mode);
+	const images = options.images ?? [];
+	for (const target of targets) {
+		const requestId = `delivery-${++deliverySequence}`;
+		const payload: Record<string, unknown> = { ...command, message: text, id: requestId };
+		if (images.length > 0) payload.images = images;
+		if (!writeRpcCommand(target, payload)) {
+			batch.failed.push({ agent: target.agent, reason: DELIVERY_WRITE_FAILURE });
+			continue;
+		}
+		batch.written.push({ agent: target.agent, requestId });
+		pendingDeliveries.set(requestId, { batch, agent: target.agent, child: target });
+	}
+	if (batch.written.length === 0) {
+		// Nothing to confirm, so nothing can be reported late.
+		batch.done = true;
+		return batch;
+	}
+	const timeoutMs = options.timeoutMs ?? DELIVERY_CONFIRM_TIMEOUT_MS;
+	batch.timer = setTimeout(() => {
+		for (const written of batch.written) {
+			if (pendingDeliveries.delete(written.requestId))
+				batch.results.set(written.requestId, { agent: written.agent, outcome: DELIVERY_TIMEOUT_OUTCOME });
+		}
+		completeDelivery(batch);
+	}, timeoutMs);
+	// Never hold the process (or a test run) open for a confirmation that may not come.
+	(batch.timer as { unref?: () => void }).unref?.();
+	return batch;
+}
+
+/**
+ * Correlate one child RPC response with the command it confirms. Returns true only for a
+ * well-formed response whose id this module issued, so `processLine` can stop there and leave
+ * every other event untouched.
+ */
+export function settleDelivery(event: {
+	id?: unknown;
+	success?: boolean;
+	command?: string;
+	data?: { disposition?: string };
+	error?: string;
+}): boolean {
+	if (typeof event.id !== "string") return false;
+	const pending = pendingDeliveries.get(event.id);
+	if (!pending) return false;
+	pendingDeliveries.delete(event.id);
+	pending.batch.results.set(event.id, { agent: pending.agent, outcome: deliveryOutcome(event) });
+	if (pending.batch.written.every((written) => pending.batch.results.has(written.requestId)))
+		completeDelivery(pending.batch);
+	return true;
+}
+
+/** A child that exits can never confirm; report what it left pending instead of waiting. */
+export function settleChildExit(child: ActiveSubagent): void {
+	const touched = new Set<DeliveryBatch>();
+	for (const [requestId, pending] of pendingDeliveries) {
+		if (pending.child !== child) continue;
+		pendingDeliveries.delete(requestId);
+		pending.batch.results.set(requestId, { agent: pending.agent, outcome: DELIVERY_CHILD_EXIT_OUTCOME });
+		touched.add(pending.batch);
+	}
+	for (const batch of touched) {
+		if (batch.written.every((written) => batch.results.has(written.requestId))) completeDelivery(batch);
+	}
+}
+
+/** Notify sink for a context, or undefined when there is no terminal to notify. */
+function deliveryNotifierFor(ctx: ExtensionContext): DeliveryNotify | undefined {
+	if (!ctx.hasUI) return undefined;
+	return (message, type) => {
+		try {
+			ctx.ui.notify(message, type);
+		} catch {
+			/* the session shut down between submission and confirmation */
+		}
+	};
+}
+
+/** Shared body of `/steer` and `/queue`: forward, else hand the message to the parent. */
+async function deliverFromCommand(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext,
+	mode: DeliveryMode,
+	args: string,
+): Promise<void> {
+	const text = args.trim();
+	const command = mode === "steer" ? "/steer" : "/queue";
+	const notify = deliveryNotifierFor(ctx);
+	if (!text) {
+		notify?.(`Usage: ${command} <message>`, "info");
+		return;
+	}
+	const batch = beginDelivery(mode, text, { notify });
+	if (batch.written.length > 0) {
+		notify?.(submissionNotice(batch), "info");
+		return;
+	}
+	// Nothing was forwarded: the parent still receives it, so the text is never lost.
+	const parent = planParentDelivery(mode, batch.written.length, ctx.isIdle());
+	batch.parent = parent.deliverAs === "steer" ? "steered" : parent.deliverAs === "followUp" ? "queued" : "started";
+	notify?.(submissionNotice(batch), batch.failed.length > 0 ? "warning" : "info");
+	pi.sendUserMessage(text, parent.deliverAs ? { deliverAs: parent.deliverAs } : undefined);
+}
+
 async function runSingleAgent(
 	defaultCwd: string,
 	dispatchDefaults: DispatchDefaults,
@@ -1235,6 +1512,10 @@ async function runSingleAgent(
 					return;
 				}
 
+				// Additive: only a well-formed response whose id a delivery issued ends here, so
+				// the steering/queue confirmation is correlated without touching the event stream.
+				if (event.type === "response" && settleDelivery(event)) return;
+
 				if (event.type === "agent_settled") {
 					// No more automatic work in the child. End stdin so the long-lived
 					// RPC process performs an orderly shutdown and `close` resolves.
@@ -1314,11 +1595,14 @@ async function runSingleAgent(
 			proc.on("close", (code) => {
 				activeSubagents.delete(child);
 				if (buffer.trim()) processLine(buffer);
+				// Any delivery this child still owes a response for can never be confirmed now.
+				settleChildExit(child);
 				resolve(code ?? 0);
 			});
 
 			proc.on("error", () => {
 				activeSubagents.delete(child);
+				settleChildExit(child);
 				resolve(1);
 			});
 
@@ -1473,17 +1757,36 @@ export default function (pi: ExtensionAPI) {
 	pi.on("input", async (event, ctx) => {
 		if (event.source !== "interactive") return { action: "continue" };
 		if (event.streamingBehavior !== "steer") return { action: "continue" };
-		const targets = [...activeSubagents];
-		if (targets.length === 0) return { action: "continue" };
-		let forwarded = 0;
-		for (const target of targets) {
-			if (writeRpcCommand(target, { type: "steer", message: event.text, images: event.images }))
-				forwarded++;
+		const notify = deliveryNotifierFor(ctx);
+		const batch = beginDelivery("steer", event.text, { images: event.images, notify });
+		if (batch.written.length === 0) {
+			// Nothing forwarded, so hand the steer back to Pi ("continue"). A closed stdin is
+			// the one case that would otherwise look accepted, so warn and keep the message.
+			if (batch.failed.length > 0) {
+				batch.parent = "steered";
+				notify?.(submissionNotice(batch), "warning");
+			}
+			return { action: "continue" };
 		}
-		if (forwarded === 0) return { action: "continue" };
 		// Handled steers are not queued locally, so confirm they were delivered.
-		if (ctx.hasUI) ctx.ui.notify(`Steering ${forwarded} running subagent${forwarded > 1 ? "s" : ""}…`, "info");
+		notify?.(submissionNotice(batch), "info");
 		return { action: "handled" };
+	});
+
+	// The command forms of the same delivery path. Both go through beginDelivery, so a
+	// /steer reaches running children exactly like an interactively typed steer.
+	pi.registerCommand("steer", {
+		description: "Steer or nudge the running subagent(s); starts a run when idle",
+		handler: async (args, ctx) => {
+			await deliverFromCommand(pi, ctx, "steer", args);
+		},
+	});
+
+	pi.registerCommand("queue", {
+		description: "Queue a follow-up for after the current run",
+		handler: async (args, ctx) => {
+			await deliverFromCommand(pi, ctx, "follow_up", args);
+		},
 	});
 
 	pi.registerTool({
