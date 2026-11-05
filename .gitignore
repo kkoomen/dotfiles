@@ -16,3 +16,7 @@ tags.temp
 
 # Sessions
 .vim/sessions/
+
+# Pi runtime coordination state and verification artifacts
+.pi/state/
+.pi/checks/
