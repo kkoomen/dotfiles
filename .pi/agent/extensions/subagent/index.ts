@@ -14,8 +14,11 @@
  * subagent instead of waiting for the whole `subagent` tool call to finish.
  *
  * Extras (personal customizations):
- *   - Run timer widget: while the agent works on your prompt, a live
- *     mm:ss timer is shown above the editor (agent_start/agent_end).
+ *   - Run timer widget: while the agent works on your prompt, a braille dot
+ *     spinner plus the elapsed m:ss time is shown above the editor, animated
+ *     at 10 fps (agent_start/agent_end). When the run ends the spinner goes
+ *     away and the row keeps only the final m:ss time; there is no checkmark
+ *     and no completion glyph.
  *   - Subagent timings: every subagent result shows how long the agent
  *     took (⏱ mm:ss), and while it is still running a live "⏳ running
  *     mm:ss" that ticks every second (Ctrl+O expands to the verdict).
@@ -71,8 +74,24 @@ const NESTED_MAX_DEPTH = 4;
 /** Max total nested-subagent lines rendered per activity trace. */
 const NESTED_MAX_NODES = 12;
 
-/** Live re-render tick for running subagent timers (1 Hz). */
+/** Live re-render tick for the wave worker table (1 Hz). */
 const LIVE_TICK_MS = 1000;
+
+/**
+ * Animation tick for the run timer's dot spinner (10 fps).
+ *
+ * Deliberately faster than `LIVE_TICK_MS`: the spinner has to walk its frames to read as
+ * motion, while the elapsed text it sits next to only changes once a second. Only the run
+ * timer uses this interval; the wave table keeps its 1 Hz tick.
+ */
+const RUN_SPINNER_INTERVAL_MS = 100;
+
+/**
+ * Braille dot frames for the run timer: the same classic sequence Pi's own "Working..."
+ * indicator walks, rotated to start at `⠼`. Ordered so the dots step around the cell, which
+ * is what reads as a terminal-native loader at `RUN_SPINNER_INTERVAL_MS` per frame.
+ */
+const RUN_SPINNER_FRAMES = ["⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "⠋", "⠙", "⠹", "⠸"];
 
 /**
  * Lines Pi renders for one widget key before it cuts the rest.
@@ -95,12 +114,17 @@ const PI_MAX_WIDGET_LINES = 10;
  * `map.delete(key)` → `targetMap.set(key, component)`), and the widget container is built by
  * appending `map.values()` in insertion order, so the last-written key renders lowest,
  * closest to the editor. Two keys under one placement therefore swap vertical order on
- * whichever 1 Hz tick wrote last. Writing both strips through one key makes the order a plain
+ * whichever tick wrote last. Writing both strips through one key makes the order a plain
  * array order instead: compare `paintRunStatus` (`waveLines` then `runTimerLines`).
  */
 const RUN_STATUS_WIDGET = "run-status";
 
-/** Run timer text: last in the widget, so it sits directly above the editor. */
+/**
+ * Run timer text: last in the widget, so it sits directly above the editor.
+ *
+ * One line while running (`<spinner frame> m:ss`) and one line once the run ends
+ * (`m:ss` only, no spinner and no completion glyph).
+ */
 let runTimerLines: string[] | undefined;
 /** Wave table text: first in the widget, so it stays above the run timer. */
 let waveLines: string[] | undefined;
@@ -146,23 +170,43 @@ function formatDuration(ms: number): string {
 /**
  * Global run timer: shows how long the current prompt has been running
  * (agent_start → agent_end) as a live widget above the editor.
+ *
+ * While running the row is a terminal dot spinner followed by the elapsed m:ss time. The
+ * spinner advances on every `RUN_SPINNER_INTERVAL_MS` tick; the text it sits next to only
+ * changes as the displayed second changes. When the run ends the spinner is dropped and the
+ * row keeps only the final m:ss time — no checkmark, no square, no status glyph.
  */
 let runTimerStart = 0;
 let runTimerInterval: ReturnType<typeof setInterval> | null = null;
 let runTimerUI: ExtensionContext["ui"] | undefined;
+/** Index of the last spinner frame painted, so each tick advances exactly one frame. */
+let runTimerFrame = 0;
+
+/** Color a spinner frame with the live theme accent; plain text when no theme is reachable. */
+function paintSpinnerFrame(ui: ExtensionContext["ui"], frame: string): string {
+	try {
+		return ui.theme.fg("accent", frame);
+	} catch {
+		// No theme (headless/print); the frame still reads as a spinner uncolored.
+		return frame;
+	}
+}
 
 export function tickRunTimer() {
 	if (!runTimerUI || !runTimerStart) return;
-	runTimerLines = [`⏳ ${formatDuration(Date.now() - runTimerStart)}`];
+	const frame = RUN_SPINNER_FRAMES[runTimerFrame % RUN_SPINNER_FRAMES.length]!;
+	runTimerFrame += 1;
+	runTimerLines = [`${paintSpinnerFrame(runTimerUI, frame)} ${formatDuration(Date.now() - runTimerStart)}`];
 	paintRunStatus(runTimerUI);
 }
 
 export function startRunTimer(ui: ExtensionContext["ui"]) {
 	runTimerStart = Date.now();
 	runTimerUI = ui;
+	runTimerFrame = 0;
 	if (runTimerInterval) clearInterval(runTimerInterval);
 	tickRunTimer();
-	runTimerInterval = setInterval(tickRunTimer, LIVE_TICK_MS);
+	runTimerInterval = setInterval(tickRunTimer, RUN_SPINNER_INTERVAL_MS);
 }
 
 export function stopRunTimer() {
@@ -171,7 +215,8 @@ export function stopRunTimer() {
 		runTimerInterval = null;
 	}
 	if (runTimerUI && runTimerStart) {
-		runTimerLines = [`⏱ ${formatDuration(Date.now() - runTimerStart)}`];
+		// Final state: the elapsed time alone. The spinner is gone and nothing replaces it.
+		runTimerLines = [formatDuration(Date.now() - runTimerStart)];
 		paintRunStatus(runTimerUI);
 	}
 	runTimerStart = 0;
@@ -1718,8 +1763,9 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
-	// Global run timer: live mm:ss widget while the agent works on the
-	// current prompt (agent_start → agent_end).
+	// Global run timer: terminal dot spinner plus elapsed mm:ss while the agent
+	// works on the current prompt, and the elapsed time alone once it ends
+	// (agent_start → agent_end).
 	pi.on("agent_start", async (_event, ctx) => {
 		clearWave();
 		startRunTimer(ctx.ui);
@@ -1744,6 +1790,7 @@ export default function (pi: ExtensionAPI) {
 			/* ignore */
 		}
 		runTimerLines = undefined;
+		runTimerFrame = 0;
 		waveLines = undefined;
 		runTimerUI = undefined;
 		runStatusUI = undefined;

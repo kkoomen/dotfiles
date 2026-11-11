@@ -273,7 +273,7 @@ function makePiUI() {
 /** Wave rows must be the leading rows and the timer the last row. */
 function expectWaveAboveTimer(ui: ReturnType<typeof makePiUI>) {
 	const rows = ui.render();
-	const timerRow = rows.findIndex((row) => /^[\u23f3\u23f1]/.test(row));
+	const timerRow = rows.findIndex((row) => TIMER_ROW.test(row));
 	const waveRow = rows.findIndex((row) => row.includes("item/01-a"));
 	expect(waveRow).toBeGreaterThanOrEqual(0);
 	expect(timerRow).toBeGreaterThan(waveRow);
@@ -283,13 +283,33 @@ function expectWaveAboveTimer(ui: ReturnType<typeof makePiUI>) {
 
 test("two widget keys under one placement flip on the last write (the pre-fix defect)", () => {
 	const ui = makePiUI();
-	ui.setWidget("run-timer", ["\u23f3 0:01"]);
+	ui.setWidget("run-timer", ["⠼ 0:01"]);
 	ui.setWidget("wave-workers", ["WAVE"]);
 	// The wave table is written last, so it lands closest to the editor: the reported bug.
-	expect(ui.render()).toEqual(["\u23f3 0:01", "WAVE"]);
-	ui.setWidget("run-timer", ["\u23f3 0:02"]);
-	expect(ui.render()).toEqual(["WAVE", "\u23f3 0:02"]);
+	expect(ui.render()).toEqual(["⠼ 0:01", "WAVE"]);
+	ui.setWidget("run-timer", ["⠴ 0:02"]);
+	expect(ui.render()).toEqual(["WAVE", "⠴ 0:02"]);
 });
+
+/** Braille dot frames the run timer animates through while a run is in flight. */
+const RUN_SPINNER_FRAMES = ["⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "⠋", "⠙", "⠹", "⠸"];
+
+/**
+ * A running timer row: one braille frame, a space, then the elapsed `m:ss` (or `h:mm:ss`).
+ * The frame may carry a theme accent color, so an ANSI wrapper is tolerated around it.
+ */
+const LIVE_TIMER_ROW = new RegExp(
+	`^(?:\\x1b\\[[\\d;]*m)*[\\u2800-\\u28ff](?:\\x1b\\[[\\d;]*m)* \\d+:\\d{2}(?::\\d{2})?$`,
+);
+
+/**
+ * A finished timer row: the elapsed `m:ss` alone. No spinner, no checkmark, no square, so the
+ * whole row is plain digits.
+ */
+const FINAL_TIMER_ROW = /^\d+:\d{2}(?::\d{2})?$/;
+
+/** Locates the timer row in the shared widget whichever of the two shapes it has. */
+const TIMER_ROW = new RegExp(`^(?:[\\u2800-\\u28ff]|\\x1b|\\d+:\\d{2})`);
 
 test("the wave table renders above the run timer for every tick interleaving", () => {
 	const ui = makePiUI();
@@ -299,7 +319,9 @@ test("the wave table renders above the run timer for every tick interleaving", (
 	clearWave();
 	startRunTimer(ui as any);
 	expect(ui.keys()).toEqual(["run-status"]);
-	expect(ui.render()).toEqual([expect.stringMatching(/^\u23f3 /)]);
+	const firstPaint = ui.render()[0]!;
+	expect(firstPaint).toMatch(LIVE_TIMER_ROW);
+	expect(firstPaint.startsWith(RUN_SPINNER_FRAMES[0]!)).toBe(true);
 
 	// wave tick, then timer tick.
 	publishWave(liveWave, ctx, "call-order");
@@ -323,15 +345,21 @@ test("the wave table renders above the run timer for every tick interleaving", (
 		expectWaveAboveTimer(ui);
 	}
 
-	// The timer's stop path writes the final "⏱" value after a wave render.
+	// The spinner advances one frame per tick, so the row is never a frozen glyph.
+	const beforeTick = ui.render().at(-1)!;
+	tickRunTimer();
+	expect(ui.render().at(-1)).not.toBe(beforeTick);
+	expect(ui.render().at(-1)).toMatch(LIVE_TIMER_ROW);
+
+	// The timer's stop path writes the final elapsed time alone, after a wave render.
 	stopRunTimer();
-	expect(ui.render().at(-1)).toMatch(/^\u23f1 /);
+	expect(ui.render().at(-1)).toMatch(FINAL_TIMER_ROW);
 	expectWaveAboveTimer(ui);
 
 	// A frozen/settled table keeps its slot above that final timer value.
 	settleWave(ctx, "call-order", finalWave);
 	expectWaveAboveTimer(ui);
-	expect(ui.render().at(-1)).toMatch(/^\u23f1 /);
+	expect(ui.render().at(-1)).toMatch(FINAL_TIMER_ROW);
 
 	// Still valid once the frozen rows stop ticking.
 	tickRunTimer();
@@ -358,7 +386,7 @@ test("a full 8-worker table plus a running timer keeps the timer as the last ren
 	publishWave(fullWave, ctx, "call-full");
 	const rows = ui.render();
 	// The timer is the row that must survive: it is the strip closest to the editor.
-	expect(rows.at(-1)).toMatch(/^\u23f3 /);
+	expect(rows.at(-1)).toMatch(LIVE_TIMER_ROW);
 	expect(rows).not.toContain(WIDGET_TRUNCATION_NOTICE);
 	expect(rows).toHaveLength(PI_MAX_WIDGET_LINES);
 	// The budget the timer does not need is still spent on the table's rows: 10 lines minus the
@@ -366,19 +394,19 @@ test("a full 8-worker table plus a running timer keeps the timer as the last ren
 	expect(rows.filter((row) => row.includes("item/"))).toHaveLength(PI_MAX_WIDGET_LINES - 4);
 	expectWaveAboveTimer(ui);
 
-	// Every 1 Hz refresh of either widget keeps the same shape, in both orders.
+	// Every refresh of either widget keeps the same shape, in both orders.
 	for (let i = 0; i < 3; i += 1) {
 		tickRunTimer();
 		expectWaveAboveTimer(ui);
 		expect(ui.render()).toHaveLength(PI_MAX_WIDGET_LINES);
 		publishWave(fullWave, ctx, "call-full");
 		expectWaveAboveTimer(ui);
-		expect(ui.render().at(-1)).toMatch(/^\u23f3 /);
+		expect(ui.render().at(-1)).toMatch(LIVE_TIMER_ROW);
 	}
 
-	// The stop path's final "\u23f1" line is the last rendered row too.
+	// The stop path's final row is the last rendered row too, and carries only the time.
 	stopRunTimer();
-	expect(ui.render().at(-1)).toMatch(/^\u23f1 /);
+	expect(ui.render().at(-1)).toMatch(FINAL_TIMER_ROW);
 	expectWaveAboveTimer(ui);
 
 	clearWave();
