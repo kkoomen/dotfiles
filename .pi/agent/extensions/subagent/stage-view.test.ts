@@ -19,6 +19,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import * as fs from "node:fs";
 import os from "node:os";
 import {
 	exitCodeOf,
@@ -158,16 +159,15 @@ describe("stageActionLines", () => {
 describe("stageStatus", () => {
 	const T = 1_700_000_000_000;
 	const done: StageTiming = { label: "⏱ 1:50", running: false, time: "1:50" };
-	const running: StageTiming = { label: "⏳ 2:32", running: true, time: "2:32" };
+	const running: StageTiming = { label: `${stageSpinnerFrame(T)} 2:32`, running: true, time: "2:32" };
 
 	test("a finished stage shows a check and its time, never the hourglass", () => {
 		expect(stageStatus(done, false, T, plain)).toBe("✓ 1:50");
 	});
 
 	test("a running stage shows a braille frame and its time", () => {
-		const marker = stageStatus(running, true && false, T, plain);
+		const marker = stageStatus(running, false, T, plain);
 		expect(marker).toBe(`${stageSpinnerFrame(T)} 2:32`);
-		expect(marker).not.toContain("⏳");
 	});
 
 	test("a failed stage shows a cross, keeping its time", () => {
@@ -280,5 +280,13 @@ describe("stageActionLines exit codes", () => {
 	test("a command with no result yet shows no exit code", () => {
 		const run = { details: details([bashCall("1", "bun test")]) };
 		expect(stageActionLines(run, plain)).toEqual(["$ bun test"]);
+	});
+});
+
+describe("no hourglass anywhere in the view code", () => {
+	test("the extension never paints ⏳ — a running agent reads as a braille frame", () => {
+		const source = fs.readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+		const hourglass = source.split("\n").filter((line) => line.includes("\u23f3"));
+		expect(hourglass).toEqual([]);
 	});
 });

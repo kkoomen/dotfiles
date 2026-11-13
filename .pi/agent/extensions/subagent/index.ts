@@ -20,8 +20,9 @@
  *     away and the row keeps only the final m:ss time; there is no checkmark
  *     and no completion glyph.
  *   - Subagent timings: every subagent result shows how long the agent
- *     took (⏱ mm:ss), and while it is still running a live "⏳ running
- *     mm:ss" that ticks every second (Ctrl+O expands to the verdict).
+ *     took (⏱ mm:ss), and while it is still running a live braille frame
+ *     plus the elapsed mm:ss, repainted every second (Ctrl+O expands to
+ *     the verdict).
  *   - Nested subagent timings: subagents called by a subagent show up
  *     with their own live/final times, both inline on the activity
  *     trace and as a recursive, indented tree in the expanded view
@@ -856,8 +857,8 @@ export function clearWave(): void {
 
 /**
  * Live re-render registry: while a subagent result is still streaming,
- * re-render its tool component every second so the "⏳ running mm:ss"
- * timer updates even when no new messages are arriving. Components are
+ * re-render its tool component every second so the running braille frame and
+ * its elapsed timer update even when no new messages are arriving. Components are
  * keyed by their renderer state object, which is stable per component.
  */
 const liveRenderers = new Map<object, () => void>();
@@ -1220,7 +1221,7 @@ function getNestedRunTiming(run: NestedSubagentRun): StageTiming | null {
 	const elapsed = (run.finishedAt ?? Date.now()) - run.startedAt;
 	const time = formatDuration(elapsed);
 	if (run.finishedAt !== undefined) return { label: `⏱ ${time}`, running: false, time };
-	return { label: `⏳ ${time}`, running: true, time };
+	return { label: `${stageSpinnerFrame(Date.now())} ${time}`, running: true, time };
 }
 
 /**
@@ -1319,7 +1320,7 @@ function getAgentTiming(result: SingleResult): { label: string; running: boolean
 	if (!result.startedAt) return null;
 	const elapsed = (result.finishedAt ?? Date.now()) - result.startedAt;
 	if (result.finishedAt !== undefined) return { label: `⏱ ${formatDuration(elapsed)}`, running: false };
-	return { label: `⏳ running ${formatDuration(elapsed)}`, running: true };
+	return { label: `${stageSpinnerFrame(Date.now())} ${formatDuration(elapsed)}`, running: true };
 }
 
 function getResultOutput(result: SingleResult): string {
@@ -2640,8 +2641,8 @@ export default function (pi: ExtensionAPI) {
 
 		renderResult(result, { expanded, isPartial }, theme, context) {
 			// Live-tick running subagent timers: while this result is streaming,
-			// re-render the component once per second so "⏳ running mm:ss"
-			// stays current even when no new messages are arriving.
+			// re-render the component once per second so the running braille frame
+			// and elapsed time stay current even when no new messages arrive.
 			if (isPartial) registerLiveRenderer(context.state, context.invalidate);
 			else unregisterLiveRenderer(context.state);
 
@@ -2959,7 +2960,7 @@ export default function (pi: ExtensionAPI) {
 				const failCount = details.results.filter((r) => r.exitCode !== -1 && isFailedResult(r)).length;
 				const isRunning = running > 0;
 				const icon = isRunning
-					? theme.fg("warning", "⏳")
+					? theme.fg("accent", stageSpinnerFrame(Date.now()))
 					: failCount > 0
 						? theme.fg("warning", "◐")
 						: theme.fg("success", "✓");
@@ -3031,7 +3032,7 @@ export default function (pi: ExtensionAPI) {
 				for (const r of details.results) {
 					const rIcon =
 						r.exitCode === -1
-							? theme.fg("warning", "⏳")
+							? theme.fg("accent", stageSpinnerFrame(Date.now()))
 							: isFailedResult(r)
 								? theme.fg("error", "✗")
 								: theme.fg("success", "✓");
