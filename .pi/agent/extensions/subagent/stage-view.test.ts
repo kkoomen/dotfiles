@@ -1,0 +1,188 @@
+/**
+ * Collapsed view of a delegating run: stage lines plus the actions under them.
+ *
+ * Inert to Pi's loader, which only loads `.pi/agent/extensions/{*\/index.ts,*.ts}`, so this
+ * file is never executed as an extension. It drives the display helpers directly to prove a
+ * run that dispatches agents shows those stages (and what each one did) instead of its own
+ * plumbing, and that a run that works directly keeps its ordinary trace.
+ *
+ * How to run it (this repo has no package.json or node_modules, and index.ts imports
+ * @earendil-works/*, so bun needs a module resolution root; bun does not honor NODE_PATH):
+ *
+ *   cd <repo root>
+ *   ln -sfn /Users/koomen/.bun/install/global/node_modules node_modules
+ *   bun test ./.pi/agent/extensions/subagent/stage-view.test.ts
+ *   rm -f node_modules
+ *
+ * Without that symlink the suite fails with `Cannot find module '@earendil-works/pi-ai'`.
+ * The link is test scaffolding only: create it for the run, remove it again afterwards.
+ */
+
+import { describe, expect, test } from "bun:test";
+import os from "node:os";
+import {
+	formatStageAction,
+	isDelegatingRun,
+	stageActionLines,
+	stageItems,
+	stageSpinnerFrame,
+	stageStatus,
+	type SubagentDetails,
+	type StageTiming,
+} from "./index.ts";
+
+/** Identity "theme": the helpers must not depend on a real theme to be checkable. */
+const plain = (_color: string, text: string) => text;
+
+const home = os.homedir();
+
+const toolCall = (id: string, name: string, args: Record<string, unknown>) => ({
+	type: "toolCall" as const,
+	id,
+	name,
+	args,
+});
+
+/** Minimal result shape the stage helpers read: just the transcript. */
+const result = (messages: any[]) => ({ messages }) as any;
+
+const details = (messages: any[]): SubagentDetails =>
+	({ mode: "single", agentScope: "user", projectAgentsDir: null, results: [result(messages)] }) as SubagentDetails;
+
+/** An assistant message carrying one tool call, in the transcript's shape. */
+const assistantCall = (id: string, name: string, args: Record<string, unknown>) => ({
+	role: "assistant",
+	content: [{ type: "toolCall", id, name, arguments: args }],
+});
+
+describe("formatStageAction", () => {
+	test("file operations read as verbs", () => {
+		expect(formatStageAction("edit", { file_path: "file2.md" }, plain)).toBe("Edited file2.md");
+		expect(formatStageAction("write", { file_path: "file2.md" }, plain)).toBe("Created file2.md");
+		expect(formatStageAction("read", { file_path: "file2.md" }, plain)).toBe("Read file2.md");
+	});
+
+	test("a bare rm reads as the removal it performs", () => {
+		expect(formatStageAction("bash", { command: "rm -f file2.md" }, plain)).toBe("Removed file2.md");
+		// Anything with shell structure stays a command.
+		expect(formatStageAction("bash", { command: "rm -rf out && echo ok" }, plain)).toBe("$ rm -rf out && echo ok");
+	});
+
+	test("shell commands keep the $ form and are length-capped", () => {
+		expect(formatStageAction("bash", { command: "npm run format" }, plain)).toBe("$ npm run format");
+		const long = formatStageAction("bash", { command: "x".repeat(120) }, plain);
+		expect(long.endsWith("...")).toBe(true);
+		expect(long.length).toBeLessThan(70);
+	});
+
+	test("the home directory is shortened, never a full path", () => {
+		expect(formatStageAction("edit", { file_path: `${home}/proj/a.md` }, plain)).toBe("Edited ~/proj/a.md");
+	});
+});
+
+describe("isDelegatingRun", () => {
+	test("true when the run dispatched an agent", () => {
+		expect(isDelegatingRun([toolCall("1", "bash", { command: "ls" }), toolCall("2", "subagent", { agent: "x", task: "y" })])).toBe(true);
+	});
+
+	test("false for a run that only works", () => {
+		expect(isDelegatingRun([toolCall("1", "bash", { command: "ls" }), toolCall("2", "edit", { file_path: "a.md" })])).toBe(false);
+	});
+});
+
+describe("stageItems", () => {
+	test("keeps only stage dispatches, newest last", () => {
+		const items = [
+			toolCall("1", "subagent", { agent: "a", task: "t" }),
+			toolCall("2", "bash", { command: "ls" }),
+			toolCall("3", "subagent", { agent: "b", task: "t" }),
+		];
+		const { items: shown, skipped } = stageItems(items, 10);
+		expect(shown.map((i) => i.id)).toEqual(["1", "3"]);
+		expect(skipped).toBe(0);
+	});
+
+	test("windows the list and reports what it hid", () => {
+		const items = Array.from({ length: 4 }, (_, i) => toolCall(String(i), "subagent", { agent: `a${i}`, task: "t" }));
+		const { items: shown, skipped } = stageItems(items, 2);
+		expect(shown.map((i) => i.id)).toEqual(["2", "3"]);
+		expect(skipped).toBe(2);
+	});
+});
+
+describe("stageActionLines", () => {
+	test("one line per tool call of the stage's agent", () => {
+		const run = {
+			details: details([
+				assistantCall("1", "edit", { file_path: "file2.md" }),
+				assistantCall("2", "edit", { file_path: "file2.md" }),
+				assistantCall("3", "write", { file_path: "file2.md" }),
+				assistantCall("4", "bash", { command: "rm file2.md" }),
+			]),
+		};
+		expect(stageActionLines(run, plain)).toEqual([
+			"Edited file2.md",
+			"Edited file2.md",
+			"Created file2.md",
+			"Removed file2.md",
+		]);
+	});
+
+	test("a stage that did nothing yet contributes no lines", () => {
+		expect(stageActionLines(undefined, plain)).toEqual([]);
+		expect(stageActionLines({ details: details([]) }, plain)).toEqual([]);
+	});
+
+	test("falls back to the live details while the stage runs", () => {
+		const run = { liveDetails: details([assistantCall("1", "bash", { command: "npm run format" })]) };
+		expect(stageActionLines(run, plain)).toEqual(["$ npm run format"]);
+	});
+
+	test("long stages keep their tail and say how many it hid", () => {
+		const calls = Array.from({ length: 5 }, (_, i) => assistantCall(String(i), "bash", { command: `cmd${i}` }));
+		const lines = stageActionLines({ details: details(calls) }, plain, 2);
+		expect(lines).toEqual(["... 3 earlier", "$ cmd3", "$ cmd4"]);
+	});
+});
+
+describe("stageStatus", () => {
+	const T = 1_700_000_000_000;
+	const done: StageTiming = { label: "⏱ 1:50", running: false, time: "1:50" };
+	const running: StageTiming = { label: "⏳ 2:32", running: true, time: "2:32" };
+
+	test("a finished stage shows a check and its time, never the hourglass", () => {
+		expect(stageStatus(done, false, T, plain)).toBe("✓ 1:50");
+	});
+
+	test("a running stage shows a braille frame and its time", () => {
+		const marker = stageStatus(running, true && false, T, plain);
+		expect(marker).toBe(`${stageSpinnerFrame(T)} 2:32`);
+		expect(marker).not.toContain("⏳");
+	});
+
+	test("a failed stage shows a cross, keeping its time", () => {
+		expect(stageStatus(done, true, T, plain)).toBe("✗ 1:50");
+	});
+
+	test("a stage that never started has no marker", () => {
+		expect(stageStatus(null, false, T, plain)).toBe("");
+	});
+});
+
+describe("stageSpinnerFrame", () => {
+	const frames = ["⠸", "⠹", "⠙", "⠋", "⠏", "⠇", "⠧", "⠦", "⠴", "⠼"];
+
+	test("starts at the frame the sequence was chosen for", () => {
+		expect(stageSpinnerFrame(0)).toBe("⠸");
+	});
+
+	test("advances one frame per second and wraps", () => {
+		const walked = Array.from({ length: 11 }, (_, i) => stageSpinnerFrame(i * 1000));
+		expect(walked).toEqual([...frames, frames[0]!]);
+	});
+
+	test("holds one frame for a whole second, so a repaint at 1 Hz animates it", () => {
+		expect(stageSpinnerFrame(3_100)).toBe(stageSpinnerFrame(3_900));
+		expect(stageSpinnerFrame(3_900)).not.toBe(stageSpinnerFrame(4_000));
+	});
+});

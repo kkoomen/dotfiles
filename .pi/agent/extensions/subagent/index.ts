@@ -27,6 +27,11 @@
  *     trace and as a recursive, indented tree in the expanded view
  *     (tracked via tool_execution_start/update events and toolResult
  *     message details, so the tree stays live while agents run).
+ *   - Collapsed view of a delegating run: instead of the plumbing between the
+ *     stages it dispatched (`cd`, plan writes, gates), the run lists the stages
+ *     themselves — `→ ✓ 1:50 document-agent` — each followed by what that
+ *     stage did (`Edited file2.md`, `$ npm run format`), indented under a
+ *     ├/└ branch line. A run that works directly keeps its ordinary trace.
  *   - Expanded view shows the agent's final verdict first, then the
  *     full activity trace.
  *   - Work type and mode on every line: the call and each result show the
@@ -63,12 +68,19 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
-import { launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot, handoffRepairReason } from "./workflow.mjs";
+import { HANDOFF_SCHEMA_VERSION, launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot, handoffRepairReason } from "./workflow.mjs";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
+
+/**
+ * Collapsed view of a delegating run: one line per stage it dispatched, then
+ * that stage's own actions, indented under it.
+ */
+const STAGE_ACTION_COUNT = 8;
+const STAGE_INDENT = "    ";
 
 /** Max indentation depth for the recursive nested-subagent tree. */
 const NESTED_MAX_DEPTH = 4;
@@ -991,6 +1003,96 @@ function formatToolCall(
 	}
 }
 
+/** Path for display: the home directory reads as `~`, never a full path. */
+function shortenHomePath(value: unknown): string {
+	const raw = typeof value === "string" && value ? value : "...";
+	const home = os.homedir();
+	return raw.startsWith(home) ? `~${raw.slice(home.length)}` : raw;
+}
+
+/**
+ * One short line for what an agent did: a file operation reads as the verb it
+ * is ("Edited x"), a shell command keeps the `$` form the activity trace uses.
+ */
+export function formatStageAction(
+	toolName: string,
+	args: Record<string, any>,
+	themeFg: (color: any, text: string) => string,
+): string {
+	switch (toolName) {
+		case "edit":
+			return themeFg("muted", "Edited ") + themeFg("accent", shortenHomePath(args.file_path ?? args.path));
+		case "write":
+			return themeFg("muted", "Created ") + themeFg("accent", shortenHomePath(args.file_path ?? args.path));
+		case "read":
+			return themeFg("muted", "Read ") + themeFg("accent", shortenHomePath(args.file_path ?? args.path));
+		case "bash": {
+			const command = typeof args.command === "string" ? args.command : "...";
+			// A bare `rm <file>` is the removal it performs, not a shell invocation.
+			const removed = /^\s*rm\s+(?:-[A-Za-z]+\s+)*([^\s;&|]+)\s*$/.exec(command);
+			if (removed) return themeFg("muted", "Removed ") + themeFg("accent", shortenHomePath(removed[1]));
+			const preview = command.length > 60 ? `${command.slice(0, 60)}...` : command;
+			return themeFg("muted", "$ ") + themeFg("toolOutput", preview);
+		}
+		case "grep":
+			return (
+				themeFg("muted", "grep ") +
+				themeFg("accent", `/${args.pattern ?? ""}/`) +
+				themeFg("dim", ` in ${shortenHomePath(args.path ?? ".")}`)
+			);
+		case "find":
+			return (
+				themeFg("muted", "find ") +
+				themeFg("accent", `${args.pattern ?? "*"}`) +
+				themeFg("dim", ` in ${shortenHomePath(args.path ?? ".")}`)
+			);
+		case "ls":
+			return themeFg("muted", "ls ") + themeFg("accent", shortenHomePath(args.path ?? "."));
+		case "subagent":
+			return themeFg("muted", "→ ") + themeFg("accent", subagentCallLabel(args).agent);
+		default:
+			return themeFg("accent", toolName);
+	}
+}
+
+/**
+ * True when the run dispatched other agents. Such a run's own items are the
+ * plumbing that connects the stages (`cd ...`, plan writes, gates), so its
+ * collapsed view lists the stages instead of that trace.
+ */
+export function isDelegatingRun(items: DisplayItem[]): boolean {
+	return items.some((item) => item.type === "toolCall" && item.name === "subagent");
+}
+
+/** The stage dispatches of a run, newest last, windowed like any collapsed list. */
+export function stageItems(
+	items: DisplayItem[],
+	limit: number,
+): { items: ToolCallDisplayItem[]; skipped: number } {
+	const stages = items.filter((i): i is ToolCallDisplayItem => i.type === "toolCall" && i.name === "subagent");
+	const shown = limit > 0 ? stages.slice(-limit) : stages;
+	return { items: shown, skipped: stages.length - shown.length };
+}
+
+/** What a stage's own agent did, newest last, one short line each. */
+export function stageActionLines(
+	run: { details?: SubagentDetails; liveDetails?: SubagentDetails } | undefined,
+	themeFg: (color: any, text: string) => string,
+	limit = STAGE_ACTION_COUNT,
+): string[] {
+	const runDetails = run?.details ?? run?.liveDetails;
+	if (!runDetails) return [];
+	const lines: string[] = [];
+	for (const child of runDetails.results) {
+		for (const item of getDisplayItems(child.messages)) {
+			if (item.type === "toolCall") lines.push(formatStageAction(item.name, item.args, themeFg));
+		}
+	}
+	if (limit <= 0 || lines.length <= limit) return lines;
+	const hidden = lines.length - limit;
+	return [themeFg("muted", `... ${hidden} earlier`), ...lines.slice(-limit)];
+}
+
 interface NestedSubagentRun {
 	toolCallId: string;
 	agent: string;
@@ -1034,13 +1136,52 @@ function contractWorkTypes(args: Record<string, any>): string | undefined {
 }
 
 /**
+ * Braille dot frames for a running stage: the run timer's sequence, rotated to start at
+ * `⠸`. A stage line repaints on the 1 Hz live tick (`LIVE_TICK_MS`), so the frame walks once
+ * per second — slow enough to read, fast enough to say the stage is still working.
+ */
+const STAGE_SPINNER_FRAMES = ["⠸", "⠹", "⠙", "⠋", "⠏", "⠇", "⠧", "⠦", "⠴", "⠼"];
+
+/**
+ * A stage's status marker: a check once it finished, a walking dot spinner while it runs,
+ * each followed by the elapsed time. A failed stage reads as a cross instead of a check.
+ */
+export type StageTiming = { label: string; running: boolean; time: string };
+
+/** One braille frame for a running stage, advanced by the 1 Hz live render tick. */
+export function stageSpinnerFrame(now: number, frames = STAGE_SPINNER_FRAMES): string {
+	const index = Math.floor(now / LIVE_TICK_MS) % frames.length;
+	return frames[index]!;
+}
+
+/**
+ * Marker + time for one stage line: `✓ 1:50` when it finished, `⠸ 2:32` while it runs.
+ * Empty when the stage never started, so a queued dispatch shows its name only.
+ */
+export function stageStatus(
+	timing: StageTiming | null,
+	failed: boolean,
+	now: number,
+	themeFg: (color: any, text: string) => string,
+): string {
+	if (!timing) return "";
+	const glyph = failed
+		? themeFg("error", "✗")
+		: timing.running
+			? themeFg("accent", stageSpinnerFrame(now))
+			: themeFg("success", "✓");
+	return `${glyph} ${themeFg("dim", timing.time)}`;
+}
+
+/**
  * How long a nested subagent ran (or has been running).
  */
-function getNestedRunTiming(run: NestedSubagentRun): { label: string; running: boolean } | null {
+function getNestedRunTiming(run: NestedSubagentRun): StageTiming | null {
 	if (!run.startedAt) return null;
 	const elapsed = (run.finishedAt ?? Date.now()) - run.startedAt;
-	if (run.finishedAt !== undefined) return { label: `⏱ ${formatDuration(elapsed)}`, running: false };
-	return { label: `⏳ ${formatDuration(elapsed)}`, running: true };
+	const time = formatDuration(elapsed);
+	if (run.finishedAt !== undefined) return { label: `⏱ ${time}`, running: false, time };
+	return { label: `⏳ ${time}`, running: true, time };
 }
 
 /**
@@ -2510,6 +2651,32 @@ export default function (pi: ExtensionAPI) {
 				return text.trimEnd();
 			};
 
+			const renderStageList = (items: DisplayItem[], runMap: Map<string, NestedSubagentRun>): string => {
+				const { items: shown, skipped } = stageItems(items, COLLAPSED_ITEM_COUNT);
+				const lines: string[] = [];
+				if (skipped > 0) lines.push(theme.fg("muted", `... ${skipped} earlier items`));
+				for (const item of shown) {
+					const run = runMap.get(item.id);
+					const stageTiming = run ? getNestedRunTiming(run) : null;
+					const failed = Boolean(run?.details?.results.some(isFailedResult));
+					const agentName = run?.agent ?? subagentCallLabel(item.args).agent;
+					let header = theme.fg("muted", "→ ");
+					const status = stageStatus(stageTiming, failed, Date.now(), theme.fg.bind(theme));
+					if (status) header += `${status} `;
+					header += failed
+						? theme.fg("error", theme.bold(agentName))
+						: theme.fg("accent", theme.bold(agentName));
+					if (run?.workType) header += theme.fg("warning", ` · ${run.workType}`);
+					lines.push(header);
+					const actions = stageActionLines(run, theme.fg.bind(theme));
+					actions.forEach((action, index) => {
+						const branch = index === actions.length - 1 ? "└" : "├";
+						lines.push(`${STAGE_INDENT}${theme.fg("muted", `${branch} `)}${action}`);
+					});
+				}
+				return lines.join("\n");
+			};
+
 			// Recursive nested-subagent tree: each nested subagent call is
 			// indented under its caller with its own live/final time, using
 			// the nested details (final from toolResult, live from
@@ -2633,8 +2800,13 @@ export default function (pi: ExtensionAPI) {
 				if (isError && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
 				else if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
 				else {
-					text += `\n${renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT, getNestedRunMap(r))}`;
-					if (displayItems.length > COLLAPSED_ITEM_COUNT) text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
+					const runMap = getNestedRunMap(r);
+					// A run that dispatches agents is shown as the stages it started, not as
+					// the plumbing between them; a run that works directly keeps its trace.
+					const delegating = isDelegatingRun(displayItems);
+					text += `\n${delegating ? renderStageList(displayItems, runMap) : renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT, runMap)}`;
+					if (delegating || displayItems.length > COLLAPSED_ITEM_COUNT)
+						text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				}
 				const usageStr = formatUsageStats(r.usage, r.model);
 				const meta = [timing?.label, usageStr].filter(Boolean).join(" · ");
