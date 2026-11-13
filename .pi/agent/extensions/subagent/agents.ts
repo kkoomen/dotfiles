@@ -16,6 +16,20 @@ export interface AgentConfig {
 	model?: string;
 	thinking?: string;
 	handoff?: boolean;
+	/**
+	 * Mechanical stage: a shell command the launcher runs instead of spawning a model.
+	 *
+	 * Some stages are pure tool orchestration — running the repository's formatter,
+	 * linter, and type check is not a judgment task. Paying a reasoning model for it
+	 * costs tokens and adds a failure mode where the model "improves" code it was only
+	 * asked to format. A command stage executes locally, writes the same handoff record,
+	 * and produces the same `checks[]` evidence, so every downstream guard still applies.
+	 *
+	 * The command runs with `bash -c` in the dispatch `cwd`. It writes the handoff JSON to
+	 * stdout and may use `PI_STAGE_CONTRACT` (the JSON contract), `PI_STAGE_DIR` (a private
+	 * directory for evidence logs), and `PI_STAGE_AGENT` (this agent's name).
+	 */
+	command?: string;
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
@@ -41,6 +55,7 @@ type AgentFrontmatter = {
 	model?: unknown;
 	thinking?: unknown;
 	handoff?: unknown;
+	command?: unknown;
 };
 
 /**
@@ -103,6 +118,7 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 				model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
 				thinking: parseThinking(frontmatter.thinking),
 				handoff: frontmatter.handoff === true ? true : undefined,
+			command: typeof frontmatter.command === "string" && frontmatter.command.trim() ? frontmatter.command.trim() : undefined,
 			systemPrompt: body,
 			source,
 			filePath,

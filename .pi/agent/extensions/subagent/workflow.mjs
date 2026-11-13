@@ -4,9 +4,35 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync, lstatSync, readlinkSync } from 'node:fs'
 import path from 'node:path'
 
-const success = new Set(['PASS', 'PLAN_READY', 'NOT_APPLICABLE', 'COMMITTED', 'WAVE_READY', 'INTEGRATION_PASS'])
-const stopped = new Set(['FAIL', 'BLOCKED', 'REPLAN_REQUIRED', 'RECLASSIFY', 'INTERVIEW_ROUND', 'INTEGRATION_FINDINGS'])
+/**
+ * Bumped only when a handoff shape changes incompatibly. Records on disk carry
+ * the version they were written with, so old evidence stays interpretable and a
+ * stale record is never mistaken for a current one.
+ */
+export const HANDOFF_SCHEMA_VERSION = 1
+
+export const success = new Set(['PASS', 'PLAN_READY', 'NOT_APPLICABLE', 'COMMITTED', 'WAVE_READY', 'INTEGRATION_PASS'])
+export const stopped = new Set(['FAIL', 'BLOCKED', 'REPLAN_REQUIRED', 'RECLASSIFY', 'INTERVIEW_ROUND', 'INTEGRATION_FINDINGS'])
 const levels = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+
+/**
+ * Stage set per route, in execution order. `commit-agent` is validated against
+ * this list: order documents the route as well as proving presence, because
+ * every writing stage (document, formatter) must run before code review.
+ */
+export const ROUTE_STAGES = {
+  small: ['build-agent', 'formatter-agent'],
+  normal: ['architect-agent', 'build-agent', 'formatter-agent', 'code-review-agent'],
+  large: [
+    'architect-large-agent',
+    'build-agent',
+    'test-agent',
+    'document-agent',
+    'formatter-agent',
+    'code-review-agent',
+  ],
+  wave: ['build-agent', 'formatter-agent', 'code-review-agent'],
+}
 
 /** Invalid settings fail visibly instead of silently changing reasoning effort. */
 export function parseThinking(value) {
@@ -131,6 +157,8 @@ export function validateReport(text, contract, agentName) {
   if (!report || typeof report !== 'object' || Array.isArray(report))
     return 'Expected one JSON handoff object'
   if (report.taskId !== contract.taskId) return 'Handoff taskId does not match assignment'
+  if (report.schemaVersion !== undefined && report.schemaVersion !== HANDOFF_SCHEMA_VERSION)
+    return `Unsupported handoff schemaVersion ${String(report.schemaVersion)}; expected ${HANDOFF_SCHEMA_VERSION}`
   if (!success.has(report.status) && !stopped.has(report.status))
     return 'Missing or unknown handoff status'
   if (typeof report.summary !== 'string' || !report.summary.trim())
@@ -196,6 +224,19 @@ export function validateReport(text, contract, agentName) {
   }
   if (agentName === 'test-agent' && report.checks.length === 0)
     return 'Test stage requires executed-check evidence'
+  if (report.findings !== undefined) {
+    if (!Array.isArray(report.findings)) return 'findings must be an array when present'
+    for (const finding of report.findings) {
+      if (!finding || typeof finding.id !== 'string' || !finding.id.trim())
+        return 'Every finding needs a stable id'
+      if (typeof finding.location !== 'string' || !finding.location.trim())
+        return `Finding ${finding.id} needs an exact location`
+      if (typeof finding.scenario !== 'string' || !finding.scenario.trim())
+        return `Finding ${finding.id} needs a failure scenario`
+    }
+    const findingIds = report.findings.map((finding) => finding.id)
+    if (new Set(findingIds).size !== findingIds.length) return 'Duplicate finding id'
+  }
   return null
 }
 
@@ -305,19 +346,7 @@ export function validatePriorRecords(contract, cwd, agentName) {
     // Order documents the route as well as proving presence: every writing stage
     // (document, formatter) runs before code review, so a formatting rewrite cannot
     // invalidate a review that already passed. Keep these arrays in execution order.
-    const routes = {
-      small: ['build-agent', 'formatter-agent'],
-      normal: ['architect-agent', 'build-agent', 'formatter-agent', 'code-review-agent'],
-      large: [
-        'architect-large-agent',
-        'build-agent',
-        'test-agent',
-        'document-agent',
-        'formatter-agent',
-        'code-review-agent',
-      ],
-      wave: ['build-agent', 'formatter-agent', 'code-review-agent'],
-    }
+    const routes = ROUTE_STAGES
     const configured = routes[contract.workType]
     if (!configured)
       return 'Commit requires contract.workType: small, normal, large, or wave'
