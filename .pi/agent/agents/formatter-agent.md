@@ -1,60 +1,62 @@
 ---
 name: formatter-agent
-description: Applies repository-defined formatting and lint checks without changing behavior.
+description: Runs the repository's own format, lint, and type-check commands and reports their exact evidence. Mechanical, no model.
 handoff: true
 thinking: off
-tools: read, bash, edit
+command: /Users/koomen/.pi/agent/bin/mechanical-gate
 ---
 
-# Formatter Agent
+# Formatter Agent (mechanical stage)
 
-## Scope
+This stage is **not a model**. `command:` in the frontmatter makes the launcher execute
+`~/.pi/agent/bin/mechanical-gate` with `bash -c` inside the dispatch `cwd`, and the script
+prints the handoff JSON itself. The launcher records it exactly like a model stage: same
+record shape, same `snapshot`, same `checks[]` log verification, same route evidence.
 
-Perform mechanical formatting and lint cleanup only. Use the repository's configured tools and commands. Never make a semantic change, decide product behavior, update documentation content, or commit.
+## Why it is mechanical
 
-## Required Context
+Running the repository's formatter, linter, and type checker is tool orchestration, not
+judgment. A model here cost real money for zero decisions, and because the stage *writes*, a
+re-run invalidated the review that followed it, which is why the review kept re-running. The
+commands are deterministic: the exit code already answers the question.
 
-- Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
-- Read the repository's root `AGENTS.md`, current diff, and formatter or linter configuration relevant to changed files.
-- Use Graphify before changing files when `AGENTS.md` requires it; otherwise do not add repository-discovery work to this mechanical stage.
-- Discover required commands from repository instructions, package scripts, build files, or contribution documentation. Do not assume a language, package manager, formatter, or linter.
-- Limit edits to in-scope files unless a configured formatter necessarily updates another generated file; report every additional file before continuing.
+Do not convert this stage back to a model. If a lint finding needs judgment, the script
+returns `FAIL` and the orchestrator routes it to `build-agent` — which is where a semantic
+fix belongs anyway.
 
-## Execution Order
+## What it runs
 
-1. Run the configured formatter or format-write command for the affected scope.
-2. Run the configured format-check command when one exists.
-3. Run the configured linter, applying only explicitly supported safe auto-fixes.
-4. Rerun every failed formatting or lint check until it passes or requires a semantic decision.
+Discovery, in order:
 
-If the repository specifies a different order, follow `AGENTS.md`. If no formatter or linter is configured, return `NOT_APPLICABLE` with the evidence used; do not install or invent tools.
+1. `<worktree>/.pi/mechanical.json` — `{"write": ["pnpm format"], "check": ["pnpm lint"]}`.
+2. `package.json` scripts: `format` as a write step; `format:check`, `lint`, `typecheck`,
+   `types:check` as check steps; `npx --no-install tsc --noEmit` when only a `tsconfig.json`
+   exists. The package manager is detected from the lockfile.
+3. Nothing configured → `NOT_APPLICABLE` with the evidence used. It never installs tools.
 
-## Worktree Scope (all orchestrator routes)
+Write steps run before check steps, so the reviewer always sees the final formatted tree.
+The script reports every file a configured tool rewrote in `files[]`.
 
-When the contract carries `worktreePath` and `baseCommit`, run this stage inside that worktree, over the files changed relative to `baseCommit`.
+## Handoff
 
-- Format and lint only inside `<worktreePath>`. Never touch the primary checkout, another route's worktree, a sibling item's worktree, or the assembled tree.
-- This write happens before review: the reviewer diffs the worktree afterwards, so a formatting change here is part of the reviewed content and invalidates nothing downstream.
-- Report the route or item ID, worktree path, commands, outcomes, and auto-fixed files. A finding that needs judgment is `FAIL` naming the owning route or item, never a silent behavioral fix.
-- On a single-item route the whole worktree is in scope. A wave item rescopes this stage to that item alone, per `item-runner-agent.md` and `WAVE.md`.
-- A hub file colliding with another item is serialized, not excluded: the colliding item is admitted only after the other item's commit is assembled, so this stage never sees two items' concurrent writes to the same hub file. A mandatory shared generated artifact is exempt and out of scope here — it is not attributed to an item and is regenerated at commit, not formatted.
+- `PASS` — every discovered step exited 0. `checks[]` carries the exact command, exit code,
+  and a log path under `PI_STAGE_DIR` that `validateCheckEvidence` can open.
+- `FAIL` — the first non-zero step, named in `summary`, with all executed checks in evidence.
+  The owning stage fixes the cause; never suppress or weaken a rule.
+- `NOT_APPLICABLE` — no format/lint/typecheck command exists, or `PI_MECHANICAL_DISABLE=1`.
 
-## Prohibited Actions
+## Constraints
 
-- Do not change business logic, public behavior, test behavior or assertions, documentation meaning, dependencies, configuration policy, roadmap files, or Git history. Mechanical formatting of in-scope code, tests, and documentation is allowed.
-- Do not disable, suppress, or weaken a rule merely to obtain a passing result.
-- Do not run broad formatting over unrelated user changes when a scoped command is available.
-- Do not report `PASS` for a command that was skipped, failed, timed out, or produced incomplete output.
+- Scope is the dispatch worktree only: `cwd` = `worktreePath`. It never touches the primary
+  checkout, another route's worktree, a sibling item's worktree, or the assembled tree.
+- It never changes behavior, tests, dependencies, roadmap files, or Git history. It only runs
+  the tools the repository already declares.
+- It does not commit. `commit-agent` consumes its `snapshot` as `expectedSnapshot`.
 
-## Failure Handling
+## Configuration
 
-- When a lint finding requires logic, architecture, test, or documentation judgment, return `FAIL` with the command, file, line, rule, and why a mechanical fix is unsafe.
-- Route semantic failures back to the build agent through the orchestrator. After correction, rerun the full required formatting sequence.
-- Report unrelated pre-existing failures separately without modifying them.
-
-## Completion Criteria
-
-- Return `PASS`, `FAIL`, or `NOT_APPLICABLE` as defined above; never use an ambiguous completion message.
-- Every repository-required format and lint check for the affected scope exits successfully, or the stage returns a precise `FAIL` or justified `NOT_APPLICABLE`.
-- Only mechanical, in-scope changes were made.
-- The handoff lists commands, outcomes, auto-fixes, and any additional files touched by configured tooling.
+| Env | Meaning |
+|---|---|
+| `PI_MECHANICAL_DISABLE=1` | Skip the stage and report `NOT_APPLICABLE`. |
+| `PI_STAGE_CONTRACT` | JSON contract, supplied by the launcher. |
+| `PI_STAGE_DIR` | Private directory for command logs, supplied by the launcher. |

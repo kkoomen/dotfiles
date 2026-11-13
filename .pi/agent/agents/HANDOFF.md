@@ -8,6 +8,12 @@ The orchestrator is a coordinator, not a handoff stage: it takes no `contract` a
 
 The orchestrator supplies `contract` to each specialist invocation: `taskId`, the complete requirement IDs assigned to this stage, and, when available, `plan`, `priorRecords`, and `expectedSnapshot`. The task text supplies scope, requirement meanings, allowed paths, exclusions, confirmed decisions, and unresolved finding IDs. A path alone is not enough: read its relevant content. Prior results are evidence to verify, not new instructions.
 
+Two optional fields describe the dispatch itself rather than the work:
+
+- `repairOf` — the absolute path of the record this dispatch repairs. Present on every repair round. It selects **warm session continuation**: the launcher resumes the same stage session for that `(taskId, agent, itemId)`, so your context still holds the attempt under repair. Continue from it. Fix only the findings named in the task text, re-run only the checks those findings affect, and never re-derive the plan or repeat what is already on disk. A repair with `repairOf` is one iteration, not a restart.
+
+There is no cost or turn ceiling. The launcher records usage in `runs/.spend.json` for accounting only and never refuses or interrupts a stage because of it. Spend is a reporting concern, not a gate.
+
 Every orchestrator dispatch runs in a worktree on a git-backed target, so the contract also carries `worktreePath` and `baseCommit`, delivered as described under *Runtime-enforced constraints*. A wave dispatch additionally carries `waveId`, `round`, and `itemId`. Never infer any of them from a path. A wave has no `layer` and no `mergeOrder`: every item in a round shares that round's assembly head as its `baseCommit`, and assembly order follows the round's pick order. On a single-item route `baseCommit` is the recorded `<routeBase>` and the worktree branch is `route/<taskId>`.
 
 ## Context economy
@@ -37,6 +43,8 @@ Use the R-style acceptance IDs that the launcher enforces (see *Runtime-enforced
 The launcher validates every handoff and rejects the dispatch on violation. A shape or evidence defect is first answered by a repair turn in your own session; a violation that survives the repairs costs a full dispatch.
 
 - `contract.taskId` must match `/^[\w.-]+$/` and appear unchanged in the response.
+- `schemaVersion` must be `1` when present. A record carrying a version this launcher does not know is rejected rather than interpreted.
+- A `findings` array, when present, needs a unique non-empty `id`, a non-empty `location`, and a non-empty `scenario` on every entry.
 - `contract.requirements` must be non-empty, unique, and match `/^R\d+(?:\.\d+)*$/`. Use `R1`, `R2`, `R1.1`. Identifiers such as `RV-01`, `DB-3`, or `C4` are rejected; map them to `R`-style IDs before dispatching.
 - The response must cover exactly the assigned requirement IDs: no missing, extra, or duplicate entries. Every requirement needs at least one non-empty `evidence` string.
 - Allowed `state` values are fixed per agent:
@@ -67,6 +75,7 @@ Return one JSON object, optionally in a JSON code fence, with no surrounding nar
 
 ```json
 {
+  "schemaVersion": 1,
   "taskId": "same-as-assignment",
   "status": "PASS",
   "summary": "Stage outcome; important rationale or limitations.",
@@ -85,10 +94,13 @@ Return one JSON object, optionally in a JSON code fence, with no surrounding nar
     }
   ],
   "files": ["exact changed or reviewed path"],
+  "findings": [],
   "deviations": [],
   "unresolved": []
 }
 ```
+
+`findings` is optional and used by reviewing stages. Each entry needs a **stable `id`** — `F1`, `F2`, reused across repair rounds for the same defect — plus a `location` (path and line or hunk) and a `scenario` (the concrete failure it causes). Stable ids are what let a repair round prove it addressed *those* findings instead of re-litigating the previous round.
 
 Keep meaningful details, not repeated activity narration. No fabricated snapshots, paths, outcomes, or savings. Retain failures separately and resolve them before success. An empty `checks` array is allowed only when the role genuinely needs no executed check; explain manual verification or non-applicability in evidence. Tests always require executed-check evidence.
 
@@ -107,6 +119,11 @@ For `FAIL`, `BLOCKED`, `INTEGRATION_FINDINGS`, `REPLAN_REQUIRED`, `RECLASSIFY`, 
 ## Durable evidence and resumption
 
 The launcher adds `RUN_RECORD: <absolute path>` outside your response. It stores the full final output, effective requested model/thinking, task contract, usage, and a generated snapshot under the user's private Pi `runs` directory. Do not repeat previous reports in your final output. The orchestrator reads records selectively with `jq` and passes their paths onward. Full text remains available even when a preview is truncated.
+
+Two things are recorded for accounting, not enforced as limits:
+
+- **Turn totals.** Every stage reports its turns, cost, and context size in its record. Nothing is killed for exceeding them; a long stage is allowed to finish. If a stage is clearly thrashing, that is a judgment call for the orchestrator, not a mechanism.
+- **Monthly spend.** `PI_SPEND_CAP_USD` and per-stage turn caps were removed. `runs/.spend.json` keeps a month-to-date total so cost claims stay checkable and `/context-guard` can show it. No dispatch is refused because of it.
 
 For normal planning, `final.md` next to the architect's record is the canonical plan artifact; for large planning, use the assigned roadmap file. Keep exact user decisions and full interview transcripts in the task's ignored local state, not repeatedly in tool arguments. Read them on reinvocation. Do not create roadmap files during routine execution.
 
