@@ -23,6 +23,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import {
 	exitCodeOf,
+	checksOfHandoff,
 	formatStageAction,
 	oneLine,
 	getDisplayItems,
@@ -321,6 +322,10 @@ describe("stageShowsActions", () => {
 	test("a stage with no timing yet has nothing to show", () => {
 		expect(stageShowsActions(null)).toBe(true);
 	});
+
+	test("opening the cell shows every stage's actions, finished ones included", () => {
+		expect(stageShowsActions({ label: "⏱ 2:03", running: false, time: "2:03" }, "expanded")).toBe(true);
+	});
 });
 
 describe("stageCost", () => {
@@ -528,5 +533,52 @@ describe("stageCostLabel", () => {
 	test("stays silent when the stage cost nothing", () => {
 		expect(stageCostLabel(0)).toBe("");
 		expect(stageCostLabel(null)).toBe("");
+	});
+});
+
+describe("command stage checks", () => {
+	const handoff = (checks: unknown) => JSON.stringify({ schemaVersion: 1, taskId: "t", status: "PASS", checks });
+
+	test("reads the commands a command stage ran", () => {
+		expect(
+			checksOfHandoff(handoff([
+				{ command: "npm run typecheck", exitCode: 0, log: "/l1" },
+				{ command: "npx prettier --check src", exitCode: 1, log: "/l2" },
+			])),
+		).toEqual([
+			{ command: "npm run typecheck", exitCode: 0 },
+			{ command: "npx prettier --check src", exitCode: 1 },
+		]);
+	});
+
+	test("an empty, absent or malformed checks list is not a crash", () => {
+		expect(checksOfHandoff(handoff([]))).toBeUndefined();
+		expect(checksOfHandoff(handoff(undefined))).toBeUndefined();
+		expect(checksOfHandoff("not json")).toBeUndefined();
+		expect(checksOfHandoff(handoff([{ command: 1 }]))).toBeUndefined();
+	});
+
+	test("a stage with no transcript lists its checks as the actions it ran", () => {
+		const run = {
+			details: {
+				mode: "single",
+				agentScope: "user",
+				projectAgentsDir: null,
+				results: [
+					{
+						messages: [],
+						usage: { cost: 0 },
+						checks: [
+							{ command: "npm run typecheck", exitCode: 0 },
+							{ command: "npx prettier --check src", exitCode: 1 },
+						],
+					},
+				],
+			},
+		} as any;
+		expect(stageActionLines(run, plain)).toEqual([
+			"$ npm run typecheck (exit code 0)",
+			"$ npx prettier --check src (exit code 1)",
+		]);
 	});
 });

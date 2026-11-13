@@ -82,6 +82,9 @@ const PER_TASK_OUTPUT_CAP = 50 * 1024;
 /** How many targets a `read N files` line names before it counts the rest. */
 const READ_SWEEP_TARGETS = 4;
 
+/** How many stage lines the expanded view lists before it folds the rest. */
+const STAGE_EXPANDED_COUNT = 20;
+
 /**
  * Collapsed view of a delegating run: one line per stage it dispatched. A stage
  * still running shows the last four things it did under it, so a retry loop
@@ -1165,7 +1168,11 @@ export function stageItems(
  * working does: a finished (or failed) stage is fully described by its marker,
  * time and name, and its command list lives in the expanded trace.
  */
-export function stageShowsActions(timing: StageTiming | null): boolean {
+export function stageShowsActions(
+	timing: StageTiming | null,
+	mode: "collapsed" | "expanded" = "collapsed",
+): boolean {
+	if (mode === "expanded") return true;
 	return timing === null || timing.running;
 }
 
@@ -1248,6 +1255,16 @@ export function stageActionLines(
 			const exitCode = item.name === "bash" ? exitCodeOf(results.get(item.id)) : null;
 			// One command, one row: a script in the arguments must not wrap the list.
 			lines.push(oneLine(formatStageAction(item.name, item.args, themeFg, exitCode)));
+		}
+	}
+	// A command stage ran no tool calls, so its handoff checks are what it executed.
+	if (lines.length === 0) {
+		for (const child of runDetails.results) {
+			for (const check of child.checks ?? []) {
+				lines.push(
+					oneLine(formatStageAction("bash", { command: check.command }, themeFg, check.exitCode)),
+				);
+			}
 		}
 	}
 	if (limit <= 0 || lines.length <= limit) return lines;
@@ -1417,6 +1434,12 @@ export interface SingleResult {
 	finishedAt?: number;
 	/** Subagents this agent called (tracked live via tool events). */
 	nestedSubagents: NestedSubagentRun[];
+	/**
+	 * Commands a command stage ran (`checks[]` of its handoff). A command stage has no
+	 * transcript, so this is the only record of what it executed; the renderer lists it
+	 * where a model stage would list its tool calls.
+	 */
+	checks?: { command: string; exitCode: number }[];
 }
 
 export interface SubagentDetails {
@@ -1939,6 +1962,27 @@ async function runCommandAgent(
 	return finalizeCommandRecord(result, root, contract);
 }
 
+/**
+ * The commands a command stage ran, from the `checks[]` of the handoff it printed.
+ * A command stage has no transcript, so without this its line is an empty stage.
+ */
+export function checksOfHandoff(output: string): { command: string; exitCode: number }[] | undefined {
+	try {
+		const parsed = JSON.parse(output) as { checks?: unknown };
+		if (!Array.isArray(parsed.checks)) return undefined;
+		const checks: { command: string; exitCode: number }[] = [];
+		for (const entry of parsed.checks) {
+			if (!entry || typeof entry !== "object") continue;
+			const { command, exitCode } = entry as { command?: unknown; exitCode?: unknown };
+			if (typeof command !== "string" || typeof exitCode !== "number") continue;
+			checks.push({ command, exitCode });
+		}
+		return checks.length > 0 ? checks : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 /** Shared record-writing path, so a command stage and a model stage are indistinguishable. */
 function finalizeCommandRecord(
 	result: SingleResult,
@@ -1947,6 +1991,7 @@ function finalizeCommandRecord(
 ): SingleResult {
 	result.finishedAt ??= Date.now();
 	const output = getFinalOutput(result.messages);
+	result.checks = checksOfHandoff(output);
 	if (!result.validationError && result.exitCode === 0 && result.agent) {
 		try {
 			result.validationError =
@@ -2854,8 +2899,20 @@ export default function (pi: ExtensionAPI) {
 				return lines.join("\n");
 			};
 
-			const renderStageList = (items: DisplayItem[], runMap: Map<string, NestedSubagentRun>): string => {
-				const { items: shown, skipped } = stageItems(items, COLLAPSED_ITEM_COUNT);
+			/**
+			 * The stages this run dispatched. Collapsed shows a running stage's live tail
+			 * only; expanded shows every stage's last few actions, which is the whole
+			 * point of opening the cell.
+			 */
+			const renderStageList = (
+				items: DisplayItem[],
+				runMap: Map<string, NestedSubagentRun>,
+				mode: "collapsed" | "expanded" = "collapsed",
+			): string => {
+				const { items: shown, skipped } = stageItems(
+					items,
+					mode === "expanded" ? STAGE_EXPANDED_COUNT : COLLAPSED_ITEM_COUNT,
+				);
 				const lines: string[] = [];
 				if (skipped > 0) lines.push(theme.fg("muted", `... ${skipped} earlier items`));
 				for (const item of shown) {
@@ -2876,10 +2933,10 @@ export default function (pi: ExtensionAPI) {
 					const costLabel = stageCostLabel(cost);
 					if (costLabel) header += theme.fg("dim", ` ${costLabel}`);
 					lines.push(header);
-					// Actions are the live tail of a stage that is still working. Once it
-					// finished, its marker and time are the whole result and Ctrl+O holds
-					// the trace, so a retried stage does not carry two command lists.
-					if (!stageShowsActions(stageTiming)) continue;
+					// Collapsed: actions are the live tail of the stage still working, and a
+					// finished stage is its marker, time, name and cost. Expanded: every
+					// stage carries its own last few actions, which is what was opened for.
+					if (!stageShowsActions(stageTiming, mode)) continue;
 					const actions = stageActionLines(run, theme.fg.bind(theme));
 					actions.forEach((action, index) => {
 						const branch = index === actions.length - 1 ? "└" : "├";
@@ -2990,9 +3047,17 @@ export default function (pi: ExtensionAPI) {
 							container.addChild(new Markdown(finalOutput.trim(), 0, 0, mdTheme));
 						}
 						if (toolCalls.length > 0) {
+							const runMap = getNestedRunMap(r);
+							// A delegating run is opened to see the stages, not every tool call
+							// of every stage: each one shows its own last few actions.
+							const delegating = isDelegatingRun(displayItems);
+							const activity = delegating
+								? renderStageList(displayItems, runMap, "expanded")
+								: renderActivityTree(r);
 							container.addChild(new Spacer(1));
-							container.addChild(new Text(theme.fg("muted", "─── Activity ───"), 0, 0));
-							const activity = renderActivityTree(r);
+							container.addChild(
+								new Text(theme.fg("muted", delegating ? "─── Stages ───" : "─── Activity ───"), 0, 0),
+							);
 							if (activity) container.addChild(new Text(activity, 0, 0));
 						}
 					}
