@@ -24,9 +24,13 @@ import os from "node:os";
 import {
 	exitCodeOf,
 	formatStageAction,
+	getDisplayItems,
 	isDelegatingRun,
 	stageActionLines,
 	formatStageCost,
+	readTarget,
+	shortenPath,
+	stripCdPrefix,
 	stageCost,
 	stageItems,
 	stageShowsActions,
@@ -350,5 +354,67 @@ describe("formatStageCost", () => {
 		expect(formatStageCost(1.23)).toBe("$1.23");
 		expect(formatStageCost(2.12)).toBe("$2.12");
 		expect(formatStageCost(10)).toBe("$10");
+	});
+});
+
+describe("stripCdPrefix", () => {
+	test("drops the directory the agent already works in", () => {
+		expect(stripCdPrefix("cd /x/y && grep -rn foo src")).toBe("grep -rn foo src");
+		expect(stripCdPrefix("cd /x/y; ls")).toBe("ls");
+		expect(stripCdPrefix('cd "/x y" && ls')).toBe("ls");
+		expect(stripCdPrefix("cd /a && cd /b && bun test")).toBe("bun test");
+	});
+
+	test("leaves a plain command alone", () => {
+		expect(stripCdPrefix("bun test")).toBe("bun test");
+	});
+
+	test("a command that only changes directory strips to nothing", () => {
+		expect(stripCdPrefix("cd /x")).toBe("");
+		expect(stripCdPrefix("cd")).toBe("");
+		expect(stripCdPrefix("cd -")).toBe("");
+		expect(stripCdPrefix("cd /a && cd /b")).toBe("");
+		expect(stripCdPrefix("cd /a; cd /b;")).toBe("");
+	});
+});
+
+describe("shortenPath", () => {
+	const base = "/Users/koomen/tech/app";
+
+	test("is relative to the directory the run works in", () => {
+		expect(shortenPath(`${base}/src/app.ts`, base)).toBe("src/app.ts");
+		expect(shortenPath(base, base)).toBe(".");
+	});
+
+	test("falls back to ~ and then to the path itself", () => {
+		expect(shortenPath(`${home}/elsewhere/a.md`, base)).toBe("~/elsewhere/a.md");
+		expect(shortenPath("/opt/tool", base)).toBe("/opt/tool");
+	});
+});
+
+describe("readTarget", () => {
+	test("names the range that was read", () => {
+		expect(readTarget({ file_path: "a/b.js", offset: 85, limit: 120 })).toBe("a/b.js:85-204");
+		expect(readTarget({ file_path: "a/b.js", offset: 85 })).toBe("a/b.js:85");
+		expect(readTarget({ file_path: "a/b.js" })).toBe("a/b.js");
+	});
+});
+
+describe("getDisplayItems", () => {
+	const message = (...parts: any[]) => ({ role: "assistant", content: parts });
+	const call = (id: string, name: string, args: Record<string, unknown>) => ({ type: "toolCall", id, name, arguments: args });
+
+	test("drops a cd-only call but keeps the real command that followed", () => {
+		const items = getDisplayItems([
+			message(call("1", "bash", { command: "cd /repo" })),
+			message(call("2", "bash", { command: "cd /repo/src && bun test" })),
+			message(call("3", "read", { file_path: "a.ts" })),
+		]);
+		expect(items.map((item: any) => item.id)).toEqual(["2", "3"]);
+		expect(formatStageAction("bash", (items[0] as any).args, plain, 0)).toBe("$ bun test (exit code 0)");
+	});
+
+	test("a transcript of only cd calls renders as no items at all", () => {
+		expect(getDisplayItems([message(call("1", "bash", { command: "cd /repo" }))])).toEqual([]);
 	});
 });

@@ -79,6 +79,9 @@ const MAX_CONCURRENCY = 8;
 const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
 
+/** How many targets a `read N files` line names before it counts the rest. */
+const READ_SWEEP_TARGETS = 4;
+
 /**
  * Collapsed view of a delegating run: one line per stage it dispatched. A stage
  * still running shows the last four things it did under it, so a retry loop
@@ -922,20 +925,15 @@ function formatUsageStats(
 	return parts.join(" ");
 }
 
-function formatToolCall(
+export function formatToolCall(
 	toolName: string,
 	args: Record<string, unknown>,
 	themeFg: (color: any, text: string) => string,
 	timingLabel?: string | null,
 ): string {
-	const shortenPath = (p: string) => {
-		const home = os.homedir();
-		return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
-	};
-
 	switch (toolName) {
 		case "bash": {
-			const command = (args.command as string) || "...";
+			const command = stripCdPrefix((args.command as string) || "...");
 			const preview = command.length > 60 ? `${command.slice(0, 60)}...` : command;
 			return themeFg("muted", "$ ") + themeFg("toolOutput", preview);
 		}
@@ -1009,11 +1007,43 @@ function formatToolCall(
 	}
 }
 
-/** Path for display: the home directory reads as `~`, never a full path. */
-function shortenHomePath(value: unknown): string {
+/** Path for display: relative to `base`, then `~`-shortened, never absolute. */
+export function shortenPath(value: unknown, base: string = process.cwd()): string {
 	const raw = typeof value === "string" && value ? value : "...";
+	const dir = base.endsWith(path.sep) ? base.slice(0, -1) : base;
+	if (dir && raw === dir) return ".";
+	if (dir && raw.startsWith(`${dir}${path.sep}`)) return raw.slice(dir.length + 1);
 	const home = os.homedir();
-	return raw.startsWith(home) ? `~${raw.slice(home.length)}` : raw;
+	if (raw === home) return "~";
+	return raw.startsWith(`${home}${path.sep}`) ? `~${raw.slice(home.length)}` : raw;
+}
+
+/**
+ * A command as the reader needs it. A leading `cd <dir> &&` only restates the
+ * directory the agent already works in, and it eats the start of the line
+ * before the part that says what the command does. A command that only changes
+ * directory strips to the empty string, which is the signal to drop the call
+ * from every trace rather than print a line that says nothing.
+ */
+export function stripCdPrefix(command: string): string {
+	let result = command.trim();
+	for (;;) {
+		const next = result.replace(/^cd\s+(?:"[^"]*"|'[^']*'|[^&;|]+?)\s*(?:&&|;)\s*/, "");
+		if (next === result) break;
+		result = next;
+	}
+	return /^cd(?:\s|$)/.test(result) && !/[&;|]/.test(result) ? "" : result;
+}
+
+/** `file.js:85-204` — the part of a read that says what it looked at. */
+export function readTarget(args: Record<string, any>): string {
+	const target = shortenPath(args.file_path ?? args.path);
+	const offset = args.offset as number | undefined;
+	const limit = args.limit as number | undefined;
+	if (offset === undefined && limit === undefined) return target;
+	const start = offset ?? 1;
+	const end = limit !== undefined ? start + limit - 1 : "";
+	return `${target}:${start}${end ? `-${end}` : ""}`;
 }
 
 /**
@@ -1053,16 +1083,16 @@ export function formatStageAction(
 	const code = typeof exitCode === "number" ? themeFg(exitCode === 0 ? "dim" : "error", ` (exit code ${exitCode})`) : "";
 	switch (toolName) {
 		case "edit":
-			return themeFg("muted", "Edited ") + themeFg("accent", shortenHomePath(args.file_path ?? args.path));
+			return themeFg("muted", "Edited ") + themeFg("accent", shortenPath(args.file_path ?? args.path));
 		case "write":
-			return themeFg("muted", "Created ") + themeFg("accent", shortenHomePath(args.file_path ?? args.path));
+			return themeFg("muted", "Created ") + themeFg("accent", shortenPath(args.file_path ?? args.path));
 		case "read":
-			return themeFg("muted", "Read ") + themeFg("accent", shortenHomePath(args.file_path ?? args.path));
+			return themeFg("muted", "Read ") + themeFg("accent", readTarget(args));
 		case "bash": {
-			const command = typeof args.command === "string" ? args.command : "...";
+			const command = stripCdPrefix(typeof args.command === "string" ? args.command : "...");
 			// A bare `rm <file>` is the removal it performs, not a shell invocation.
 			const removed = /^\s*rm\s+(?:-[A-Za-z]+\s+)*([^\s;&|]+)\s*$/.exec(command);
-			if (removed) return themeFg("muted", "Removed ") + themeFg("accent", shortenHomePath(removed[1])) + code;
+			if (removed) return themeFg("muted", "Removed ") + themeFg("accent", shortenPath(removed[1])) + code;
 			const preview = command.length > 60 ? `${command.slice(0, 60)}...` : command;
 			return themeFg("muted", "$ ") + themeFg("toolOutput", preview) + code;
 		}
@@ -1070,16 +1100,16 @@ export function formatStageAction(
 			return (
 				themeFg("muted", "grep ") +
 				themeFg("accent", `/${args.pattern ?? ""}/`) +
-				themeFg("dim", ` in ${shortenHomePath(args.path ?? ".")}`)
+				themeFg("dim", ` in ${shortenPath(args.path ?? ".")}`)
 			);
 		case "find":
 			return (
 				themeFg("muted", "find ") +
 				themeFg("accent", `${args.pattern ?? "*"}`) +
-				themeFg("dim", ` in ${shortenHomePath(args.path ?? ".")}`)
+				themeFg("dim", ` in ${shortenPath(args.path ?? ".")}`)
 			);
 		case "ls":
-			return themeFg("muted", "ls ") + themeFg("accent", shortenHomePath(args.path ?? "."));
+			return themeFg("muted", "ls ") + themeFg("accent", shortenPath(args.path ?? "."));
 		case "subagent":
 			return themeFg("muted", "→ ") + themeFg("accent", subagentCallLabel(args).agent);
 		default:
@@ -1380,15 +1410,23 @@ type DisplayItem =
 
 type ToolCallDisplayItem = Extract<DisplayItem, { type: "toolCall" }>;
 
-function getDisplayItems(messages: Message[]): DisplayItem[] {
+/**
+ * The transcript as display items, in order. A `cd`-only call is dropped here,
+ * the single place every trace reads from (collapsed list, stage actions,
+ * expanded activity tree, parallel and chain views), so no view can show one.
+ */
+export function getDisplayItems(messages: Message[]): DisplayItem[] {
 	const items: DisplayItem[] = [];
 	for (const msg of messages) {
-		if (msg.role === "assistant") {
-			for (const part of msg.content) {
-				if (part.type === "text") items.push({ type: "text", text: part.text });
-				else if (part.type === "toolCall")
-					items.push({ type: "toolCall", id: part.id, name: part.name, args: part.arguments });
+		if (msg.role !== "assistant") continue;
+		for (const part of msg.content) {
+			if (part.type === "text") {
+				items.push({ type: "text", text: part.text });
+				continue;
 			}
+			if (part.type !== "toolCall") continue;
+			if (part.name === "bash" && stripCdPrefix(String(part.arguments?.command ?? "")) === "") continue;
+			items.push({ type: "toolCall", id: part.id, name: part.name, args: part.arguments });
 		}
 	}
 	return items;
@@ -2707,20 +2745,51 @@ export default function (pi: ExtensionAPI) {
 			) => {
 				const toShow = limit ? items.slice(-limit) : items;
 				const skipped = limit && items.length > limit ? items.length - limit : 0;
-				let text = "";
-				if (skipped > 0) text += theme.fg("muted", `... ${skipped} earlier items\n`);
-				for (const item of toShow) {
+				const lines: string[] = [];
+				if (skipped > 0) lines.push(theme.fg("muted", `... ${skipped} earlier items`));
+				for (let i = 0; i < toShow.length; i++) {
+					const item = toShow[i];
 					if (item.type === "text") {
 						const preview = expanded ? item.text : item.text.split("\n").slice(0, 3).join("\n");
-						text += `${theme.fg("toolOutput", preview)}\n`;
-					} else {
-						const nestedLabel =
-							item.name === "subagent" && runMap ? nestedRunLabel(runMap.get(item.id)) : null;
-						const base = `${theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme.fg.bind(theme), nestedLabel)}`;
-						text += `${base}\n`;
+						lines.push(theme.fg("toolOutput", preview));
+						continue;
 					}
+					// A reading sweep is one step of the work, not one step per file.
+					if (item.name === "read") {
+						const sweep: ToolCallDisplayItem[] = [item];
+						while (i + sweep.length < toShow.length) {
+							const next = toShow[i + sweep.length];
+							if (next.type !== "toolCall" || next.name !== "read") break;
+							sweep.push(next);
+						}
+						if (sweep.length > 1) {
+							const shown = sweep.slice(0, READ_SWEEP_TARGETS).map((call) => readTarget(call.args));
+							const hidden = sweep.length - shown.length;
+							lines.push(
+								theme.fg("muted", `read ${sweep.length} files · `) +
+									theme.fg("accent", shown.join(", ")) +
+									(hidden > 0 ? theme.fg("dim", ` +${hidden}`) : ""),
+							);
+							i += sweep.length - 1;
+							continue;
+						}
+					}
+					// A command repeated verbatim is one line with a count.
+					let repeat = 1;
+					while (i + repeat < toShow.length) {
+						const next = toShow[i + repeat];
+						if (next.type !== "toolCall") break;
+						if (next.name !== item.name || JSON.stringify(next.args) !== JSON.stringify(item.args)) break;
+						repeat++;
+					}
+					const nestedLabel =
+						item.name === "subagent" && runMap ? nestedRunLabel(runMap.get(item.id)) : null;
+					let line = `${theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme.fg.bind(theme), nestedLabel)}`;
+					if (repeat > 1) line += theme.fg("dim", ` ×${repeat}`);
+					lines.push(line);
+					i += repeat - 1;
 				}
-				return text.trimEnd();
+				return lines.join("\n");
 			};
 
 			const renderStageList = (items: DisplayItem[], runMap: Map<string, NestedSubagentRun>): string => {
