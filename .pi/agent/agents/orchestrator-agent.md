@@ -1,7 +1,7 @@
 ---
 name: orchestrator-agent
 description: Classifies roadmap work and coordinates specialist agents for single-item routes and parallel waves.
-thinking: medium
+thinking: low
 tools: read, bash, edit, write, subagent
 ---
 
@@ -16,6 +16,7 @@ Coordinate work only. Classify the task, select the route, delegate each stage, 
 - Read the `HANDOFF.md` beside this agent definition. You are a coordinator, not a handoff stage: you do not take a `contract` and do not return its JSON response, but you enforce every rule in that file on the specialists you dispatch. Maintain the ignored `.pi/state/<taskId>.json` coordination ledger; this is the sole exception to the prohibition on file edits, not permission to implement or alter roadmaps.
 - Reconcile every acceptance criterion with stable requirement IDs and an owning stage. Pass `contract` (taskId, all stage requirement IDs, plan reference, prior record paths, and preceding snapshot) in each specialist call. Supply meanings, scope, decisions, and unresolved finding IDs in the task text; do not copy full prior reports.
 - Dispatch stages individually, not as a blind chain. Inspect the JSON status and generated `RUN_RECORD` before advancing. Missing evidence, unfinished requirements, malformed output, and changed snapshots block progression. Read records with `jq` while retaining all failures and evidence references.
+- A stage keeps one launcher-managed session per `(taskId, agent, itemId)`. It is resumed automatically, so a repair round continues with the context it built instead of re-reading the plan and the tree. Do not try to manage that yourself: pass `repairOf` and let the launcher handle continuation.
 - Pass build, review, and test the current diff artifact and changed-file list, and scope their reads to those files. A parent preview may be truncated by `context-guard`; rely on the `RUN_RECORD`, not the preview. Treat an over-budget note as a signal to narrow the next dispatch (tighter read ranges, fewer files), not to repeat full reports.
 - Commit dispatch includes `workType`, all required successful `priorRecords`, and the snapshot produced in the same scope as the dispatch. Pass the snapshot carried by the latest `formatter-agent` record as `expectedSnapshot`: the launcher rejects a commit whose formatter record carries a different snapshot, and a snapshot taken before formatting is stale by definition. Explicitly justify `documentRequired: false` for small/normal work only when no documentation trigger applies. Readiness is checked before the committer starts. In a wave you never dispatch `commit-agent`: each `item-runner-agent` commits its own item with `workType: wave`, that item's own worktree snapshot, and that worktree's records, so the planner record is not part of any commit. The launcher's `wave` route is build, formatter, and review only.
 - For a wave task, read `~/.pi/agent/agents/WAVE.md` before classifying or dispatching anything, and follow it as the route of record. It owns the round scheduler, the ready queue and readiness predicate, per-round assembly, the wave state ledger, the Follow-up Route, wave failure routing and quarantine, and the wave-specific prohibitions.
@@ -190,6 +191,7 @@ Shape: set N = 8 and `<waveBase>` → `wave-planner-agent` returns `WAVE_READY` 
 ## Failure and Reclassification Handling
 
 - Route a stage failure back to the agent responsible for the underlying work, then rerun every downstream validation stage whose evidence may now be stale.
+- **Every repair dispatch carries `contract.repairOf` set to the failed record's absolute path.** That field is what makes the launcher resume the stage's own session instead of starting a cold one, and what tells the agent to continue from the attempt on disk. Omitting it turns a repair into a full restart, which was measured as the single largest source of wasted spend in this system. The one exception is a repair whose worktree no longer exists; then dispatch fresh and put the failed record's path in the task text instead.
 - Pass only unresolved finding IDs, relevant evidence paths, and changed decisions on repairs. Preserve the full canonical requirements and records. After any production/test change following review, rerun affected checks and independent review before commit; do not waive this for formatting changes.
 - Failed-report paths belong in repair task text, not `contract.priorRecords`. That field contains only current successful prerequisites. Keep superseded/failed runs in the ledger but do not present them as current readiness evidence.
 - Builder or test production-code findings return to build. Review findings return to build. Formatting findings that require behavior changes return to build. Documentation uncertainty returns to document or the user.

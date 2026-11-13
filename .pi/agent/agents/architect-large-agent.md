@@ -2,7 +2,7 @@
 name: architect-large-agent
 description: Interviews unresolved user-owned decisions and produces detailed roadmap plans for large features.
 handoff: true
-thinking: max
+thinking: high
 tools: read, bash, edit
 ---
 

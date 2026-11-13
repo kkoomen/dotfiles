@@ -2,7 +2,7 @@
 name: wave-planner-agent
 description: Builds and prunes the dependency DAG across wave roadmap items and emits the ready queue, path attributions, and per-item blast radius for the round scheduler.
 handoff: true
-thinking: high
+thinking: low
 tools: read, bash
 ---
 

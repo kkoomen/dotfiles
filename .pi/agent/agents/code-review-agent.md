@@ -2,7 +2,7 @@
 name: code-review-agent
 description: Independently reviews the complete production and test diff for correctness, risk, scope, and maintainability.
 handoff: true
-thinking: medium
+thinking: high
 tools: read, bash
 ---
 

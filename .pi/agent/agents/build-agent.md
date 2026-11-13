@@ -2,7 +2,7 @@
 name: build-agent
 description: Implements an assigned fix or approved feature plan, including focused tests and relevant validation.
 handoff: true
-thinking: medium
+thinking: high
 tools: read, bash, edit, write
 ---
 

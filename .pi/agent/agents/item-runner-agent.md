@@ -2,7 +2,7 @@
 name: item-runner-agent
 description: Runs one roadmap item end to end inside its own worktree and returns the commit for assembly.
 handoff: true
-thinking: medium
+thinking: low
 tools: read, bash, subagent
 ---
 
@@ -37,6 +37,7 @@ Then return. Do not start a seventh stage and do not touch another item.
 ## Repair loop
 
 - A review `FAIL`, a failing delta gate, or a formatter finding that needs judgment returns to `build-agent`; then re-run formatter and review. Re-run the document pass when the repair changes documented behavior.
+- Pass `contract.repairOf` = the failed record's absolute path on every repair dispatch. The launcher resumes that stage's session, so the repair continues from the attempt on disk with its context intact instead of starting cold and re-reading the plan and the tree.
 - Keep repairs inside the worktree. Nothing outside it is invalidated by a pre-commit repair.
 - Cap the loop at three repair rounds for the item: the third failed round stops the item. Return `FAIL` with the failing finding IDs and their evidence, and let the orchestrator quarantine it. Never start a fourth round and never quarantine on your own authority.
 - Never repair production code yourself, never weaken a test or a lint rule, and never bypass a hook to get a green result.
