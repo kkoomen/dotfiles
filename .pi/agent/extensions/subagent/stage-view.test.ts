@@ -26,7 +26,10 @@ import {
 	formatStageAction,
 	isDelegatingRun,
 	stageActionLines,
+	formatStageCost,
+	stageCost,
 	stageItems,
+	stageShowsActions,
 	stageSpinnerFrame,
 	stageStatus,
 	type SubagentDetails,
@@ -288,5 +291,64 @@ describe("no hourglass anywhere in the view code", () => {
 		const source = fs.readFileSync(new URL("./index.ts", import.meta.url), "utf8");
 		const hourglass = source.split("\n").filter((line) => line.includes("\u23f3"));
 		expect(hourglass).toEqual([]);
+	});
+});
+
+describe("stageShowsActions", () => {
+	const T = 1_700_000_000_000;
+
+	test("a running stage shows its live action tail", () => {
+		expect(stageShowsActions({ label: `${stageSpinnerFrame(T)} 2:32`, running: true, time: "2:32" })).toBe(true);
+	});
+
+	test("a finished stage shows only its marker, time and name", () => {
+		expect(stageShowsActions({ label: "⏱ 2:03", running: false, time: "2:03" })).toBe(false);
+	});
+
+	test("a failed stage is finished too, so it shows no action tail", () => {
+		const failed: StageTiming = { label: "⏱ 0:00", running: false, time: "0:00" };
+		expect(stageShowsActions(failed)).toBe(false);
+	});
+
+	test("a stage with no timing yet has nothing to show", () => {
+		expect(stageShowsActions(null)).toBe(true);
+	});
+});
+
+describe("stageCost", () => {
+	const withUsage = (...costs: number[]) => ({
+		details: {
+			mode: "single",
+			agentScope: "user",
+			projectAgentsDir: null,
+			results: costs.map((cost) => ({ messages: [], usage: { cost } })),
+		},
+	});
+
+	test("sums every result of the stage", () => {
+		expect(stageCost(withUsage(0.25, 0.5) as any)).toBe(0.75);
+	});
+
+	test("a stage with no reported usage has no cost to show", () => {
+		expect(stageCost(undefined)).toBeNull();
+		expect(stageCost({ details: { mode: "single", agentScope: "user", projectAgentsDir: null, results: [] } } as any)).toBeNull();
+	});
+
+	test("a free stage reports 0, not null", () => {
+		expect(stageCost(withUsage(0) as any)).toBe(0);
+	});
+});
+
+describe("formatStageCost", () => {
+	test("keeps four decimals for a cheap stage, trims trailing zeros", () => {
+		expect(formatStageCost(0.0265)).toBe("$0.0265");
+		expect(formatStageCost(0.03)).toBe("$0.03");
+		expect(formatStageCost(0)).toBe("$0");
+	});
+
+	test("a whole-dollar stage does not read as $1.2300", () => {
+		expect(formatStageCost(1.23)).toBe("$1.23");
+		expect(formatStageCost(2.12)).toBe("$2.12");
+		expect(formatStageCost(10)).toBe("$10");
 	});
 });

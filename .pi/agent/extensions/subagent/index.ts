@@ -30,11 +30,12 @@
  *     message details, so the tree stays live while agents run).
  *   - Collapsed view of a delegating run: instead of the plumbing between the
  *     stages it dispatched (`cd`, plan writes, gates), the run lists the stages
- *     themselves — `→ ✓ 1:50 document-agent` — each followed by the last four
- *     things that stage did (`Edited file2.md`, `$ npm run format (exit code 1)`),
- *     indented under a ├/└ branch line. A command line carries its exit code, so
- *     a retry loop reads as `exit code 1` repeated and then `0`. A run that works
- *     directly keeps its ordinary trace.
+ *     themselves — `→ ✓ 1:50 document-agent $0.0265` — and the stage that is
+ *     still running is followed by the last four things it did
+ *     (`Edited file2.md`, `$ npm run format (exit code 1)`), indented under a
+ *     ├/└ branch line. A command line carries its exit code, so a retry loop
+ *     reads as `exit code 1` repeated and then `0`. A finished stage is only its
+ *     marker, time and name. A run that works directly keeps its ordinary trace.
  *   - Expanded view shows the agent's final verdict first, then the
  *     full activity trace.
  *   - Work type and mode on every line: the call and each result show the
@@ -79,9 +80,10 @@ const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
 
 /**
- * Collapsed view of a delegating run: one line per stage it dispatched, then
- * the last few things that stage did, indented under it. Four is enough to show
- * a retry loop (`exit code 1` three times, then `0`) without flooding the line.
+ * Collapsed view of a delegating run: one line per stage it dispatched. A stage
+ * still running shows the last four things it did under it, so a retry loop
+ * (`exit code 1` three times, then `0`) is visible while it happens; a stage
+ * that finished is just `✓ 2:03 build-agent`, its trace left to Ctrl+O.
  */
 const STAGE_ACTION_COUNT = 4;
 const STAGE_INDENT = "    ";
@@ -1102,6 +1104,36 @@ export function stageItems(
 	const stages = items.filter((i): i is ToolCallDisplayItem => i.type === "toolCall" && i.name === "subagent");
 	const shown = limit > 0 ? stages.slice(-limit) : stages;
 	return { items: shown, skipped: stages.length - shown.length };
+}
+
+/**
+ * Whether a stage line carries its action tail. Only a stage that is still
+ * working does: a finished (or failed) stage is fully described by its marker,
+ * time and name, and its command list lives in the expanded trace.
+ */
+export function stageShowsActions(timing: StageTiming | null): boolean {
+	return timing === null || timing.running;
+}
+
+/**
+ * What a stage cost, summed over every result it produced (a parallel dispatch
+ * has one result per task). Null when the stage has no reported usage yet.
+ */
+export function stageCost(run: { details?: SubagentDetails; liveDetails?: SubagentDetails } | undefined): number | null {
+	const runDetails = run?.details ?? run?.liveDetails;
+	if (!runDetails || runDetails.results.length === 0) return null;
+	let total = 0;
+	for (const result of runDetails.results) total += result.usage?.cost ?? 0;
+	return total;
+}
+
+/**
+ * Cost for a stage line: `$1.23`, `$0.0265`. Four decimals keep a cheap stage
+ * distinguishable from a free one; trailing zeros are trimmed so a whole-dollar
+ * stage does not read as `$1.2300`.
+ */
+export function formatStageCost(cost: number): string {
+	return `$${cost.toFixed(4).replace(/\.?0+$/, "")}`;
 }
 
 /** What a stage's own agent did, newest last, one short line each. */
@@ -2707,7 +2739,15 @@ export default function (pi: ExtensionAPI) {
 						? theme.fg("error", theme.bold(agentName))
 						: theme.fg("accent", theme.bold(agentName));
 					if (run?.workType) header += theme.fg("warning", ` · ${run.workType}`);
+					// A finished stage also answers "what did that cost?" — the running
+					// one does not, because its total is still climbing.
+					const cost = stageTiming && !stageTiming.running ? stageCost(run) : null;
+					if (cost !== null) header += theme.fg("dim", ` ${formatStageCost(cost)}`);
 					lines.push(header);
+					// Actions are the live tail of a stage that is still working. Once it
+					// finished, its marker and time are the whole result and Ctrl+O holds
+					// the trace, so a retried stage does not carry two command lists.
+					if (!stageShowsActions(stageTiming)) continue;
 					const actions = stageActionLines(run, theme.fg.bind(theme));
 					actions.forEach((action, index) => {
 						const branch = index === actions.length - 1 ? "└" : "├";
