@@ -2,7 +2,7 @@
 name: code-review-agent
 description: Independently reviews the complete production and test diff for correctness, risk, scope, and maintainability.
 handoff: true
-thinking: high
+thinking: medium
 tools: read, bash
 ---
 
@@ -14,7 +14,7 @@ Review only. Evaluate the final production and test diff independently after imp
 
 ## Required Context
 
-- Read the `HANDOFF.md` beside this agent definition; its assignment, JSON output, and evidence rules apply to this stage. Preserve all requirements and safety details; no hard output-length limit.
+- Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
 - Read the repository's root `AGENTS.md`, assigned roadmap item, approved plan, prior-stage handoffs, current diff, and relevant code and tests.
 - Use Graphify when available or required to inspect callers, dependencies, data flow, ownership boundaries, and related coverage. Verify findings against current files.
 - Inspect unrelated working-tree changes so findings and recommendations remain limited to the assigned scope.
@@ -36,9 +36,7 @@ When the contract carries `worktreePath` and `baseCommit`, review only what chan
 
 - Diff the worktree against its `baseCommit`: `git -C <worktreePath> diff <baseCommit>`, plus `git -C <worktreePath> status --porcelain` to surface untracked files. The builder does not commit, so a `<baseCommit>...HEAD` range would be empty.
 - On a single-item route (`small`, `normal`, `large`) that worktree holds the whole change: review all of it against the approved plan and the assigned acceptance criteria. Never read, diff, or review the primary checkout, which may hold unrelated user work, and never approve a change you only saw outside the worktree.
-
-In a wave, the worktree holds exactly one roadmap item.
-- Review only that worktree. Never review the whole wave, a sibling worktree, or the assembled result; cross-item coherence belongs to the integration reviewer.
+- In a wave the worktree holds exactly one roadmap item: review only that worktree. Never review the whole wave, a sibling worktree, or the assembled result; cross-item coherence belongs to the integration reviewer.
 - Judge only against that item's acceptance criteria, plan, and blast radius. Duplicated helpers across worktrees and assembled-result behavior are out of scope; mention them only when they block the item.
 - Do not require sibling suites to be green. The delta gate covers the baseline, and pre-existing failures are not findings.
 - The per-workspace test-agent pass runs on the assembled tree after this review, so do not wait for it and do not review its output.

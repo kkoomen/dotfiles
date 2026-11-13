@@ -24,7 +24,7 @@ If invoked and none applies, return `NOT_APPLICABLE` with a specific reason and 
 
 ## Required Context
 
-- Read the `HANDOFF.md` beside this agent definition; its assignment, JSON output, and evidence rules apply to this stage. Preserve all requirements and safety details; no hard output-length limit.
+- Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
 - For a code change, read the repository's root `AGENTS.md`, assigned roadmap item, approved plan, current diff, validation handoffs, and existing documentation related to the changed behavior.
 - Use Graphify when available or required to locate public interfaces and affected documentation. Verify every documented claim against current code, tests, or accepted user decisions.
 - Follow the repository's existing documentation locations, formats, terminology, heading rules, and versioning policy. Do not impose a new template.

@@ -15,11 +15,12 @@ Every orchestrator dispatch runs in a worktree on a git-backed target, so the co
 Keep every stage's context proportional to its assignment; context size is a correctness-safe cost, not a virtue.
 
 - Treat the current `git diff` plus the changed-file list as the primary artifact. For build, review, and test, read only the files and ranges needed to judge the assigned IDs, using `read` offsets instead of whole trees. Expand a range only when a specific question requires it.
+- The assignment names the in-scope files and the diff range. Read those, their direct callers, and the assigned roadmap section, and nothing else: not a sibling item's worktree, not an unrelated workspace, not the whole documentation set. Use Graphify for relationship questions instead of reading files one by one.
 - Do not re-derive a prior stage's work. Read its record by `RUN_RECORD` path with `jq`, selecting only the fields you need. `priorRecords` are paths, not inlined content; never assume a report body is already in your context.
 - The parent's preview of your output may be truncated by `context-guard`, with the full text left in your `RUN_RECORD`. Keep the canonical detail in the record and the summary short; do not paste whole files, dependency trees, or long logs into evidence.
 - When `context-guard` appends an over-budget note to a stage result, narrow the next dispatch rather than ignoring it: tighter read ranges, fewer files, and no repeated full-report echoing. Report the note if it blocks the assignment.
 
-For commit, also supply `workType` (`small`, `normal`, `large`, or `wave`), all required successful `priorRecords`, and the `expectedSnapshot` produced in the same scope as the dispatch. For a wave item commit that is that item's own worktree snapshot — never a sibling worktree's and never the assembled tree's. Set `documentRequired: false` only when the small, normal, or wave documentation triggers were checked and do not apply; document that decision in task state. The launcher checks required route stages, current formatter evidence, and changes since review before starting the committer. Review records must list the actual reviewed files. Newly changed production/test/configuration files invalidate review even if they were not in its original file list.
+For commit, also supply `workType` (`small`, `normal`, `large`, or `wave`), all required successful `priorRecords`, and the `expectedSnapshot` produced in the same scope as the dispatch. `expectedSnapshot` is the snapshot carried by the latest formatter record: a snapshot captured before the formatter ran is stale by definition and the commit is refused as "formatter evidence is stale". For a wave item commit that is that item's own worktree snapshot — never a sibling worktree's and never the assembled tree's. Set `documentRequired: false` only when the small, normal, or wave documentation triggers were checked and do not apply; document that decision in task state. The launcher checks required route stages, current formatter evidence, and changes since review before starting the committer. Review records must list the actual reviewed files. Newly changed production/test/configuration files invalidate review even if they were not in its original file list.
 
 For `wave`, the commit stage runs once per item, inside that item's own worktree on branch `item/<itemId>`, and each dispatch carries exactly one item's files apart from mandatory shared generated artifacts. The orchestrator cherry-picks that one commit onto the wave branch in the round's pick order, after the round returns. No combined wave commit exists, the one commit per roadmap item rule still holds, and no precomputed assembly order exists to follow.
 
@@ -33,7 +34,7 @@ Use the R-style acceptance IDs that the launcher enforces (see *Runtime-enforced
 
 ## Runtime-enforced constraints
 
-The launcher validates every handoff and rejects the dispatch on violation. These are not style guidance; a violation costs a full dispatch.
+The launcher validates every handoff and rejects the dispatch on violation. A shape or evidence defect is first answered by a repair turn in your own session; a violation that survives the repairs costs a full dispatch.
 
 - `contract.taskId` must match `/^[\w.-]+$/` and appear unchanged in the response.
 - `contract.requirements` must be non-empty, unique, and match `/^R\d+(?:\.\d+)*$/`. Use `R1`, `R2`, `R1.1`. Identifiers such as `RV-01`, `DB-3`, or `C4` are rejected; map them to `R`-style IDs before dispatching.
@@ -56,13 +57,13 @@ The launcher validates every handoff and rejects the dispatch on violation. Thes
 - `contract.priorRecords` are validated: a record that failed, is incomplete, or belongs to another task is rejected. Failed reports belong in the task text, never in `priorRecords`.
 - `contract.taskId` is shared: every record in `priorRecords` must carry the same taskId as the dispatching contract. A wave therefore uses one taskId for every item and every stage; per-stage task IDs are not permitted inside a wave.
 - `contract.workType` must be one of `small`, `normal`, `large`, or `wave`. A `commit-agent` dispatch also requires `expectedSnapshot`, and the launcher rejects a commit whose latest formatter record carries a different snapshot.
-- A `commit-agent` dispatch requires evidence for every stage of its route: `small` → build, formatter; `normal` → architect, build, review, formatter; `large` → architect-large, build, test, review, document, formatter; `wave` → build, review, formatter. The wave planner record is never part of an item commit: it is dispatched once for the wave, before any worktree exists, and the item runner that commits has no access to it.
+- A `commit-agent` dispatch requires evidence for every stage of its route: `small` → build, formatter; `normal` → architect, build, formatter, review; `large` → architect-large, build, test, document, formatter, review; `wave` → build, formatter, review. The wave planner record is never part of an item commit: it is dispatched once for the wave, before any worktree exists, and the item runner that commits has no access to it.
 - `worktreePath` and its `baseCommit` are required on every orchestrator dispatch, not just a wave: they name the worktree the stage must work in and the commit it is measured against. `worktreePath` is delivered twice and both are required: as a contract field that tells the agent where to work, and as the launcher's `cwd` argument. Pass them always equal. `cwd` is what drives the recorded snapshot, the review file digests, check-log path resolution, and the agent process's working directory; `worktreePath` alone changes nothing. A stage that cannot see a matching `cwd` reports the mismatch instead of editing the primary checkout.
 - `QUARANTINED` is not a handoff status and no specialist may return it. It is an item state the orchestrator records in wave state.
 
 ## Final response
 
-Return one JSON object, optionally in a JSON code fence, with no surrounding narrative. Successful responses use:
+Return one JSON object, optionally in a JSON code fence, with no surrounding narrative. A handoff that fails this shape is not discarded: the launcher sends up to two repair turns back into your session (PI_SUBAGENT_HANDOFF_REPAIRS), naming the defect. Fix only what it names, keep the work already on disk, and never redo the stage or re-read the workspace to answer it. Successful responses use:
 
 ```json
 {

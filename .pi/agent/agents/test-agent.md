@@ -14,7 +14,7 @@ Perform an independent test-design and execution pass after implementation. This
 
 ## Required Context
 
-- Read the `HANDOFF.md` beside this agent definition; its assignment, JSON output, and evidence rules apply to this stage. Preserve all requirements and safety details; no hard output-length limit.
+- Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
 - Read the repository's root `AGENTS.md`, assigned roadmap item, approved plan, implementation handoff, current diff, and related tests.
 - Use Graphify when available or required to locate implementation boundaries, callers, existing coverage, and meaningful failure paths. Verify graph findings against current files.
 - Use the repository's existing test framework, package manager, fixtures, and commands. Do not introduce a new framework or test category unless the approved plan explicitly requires it.

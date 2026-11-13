@@ -2,7 +2,7 @@
 name: build-agent
 description: Implements an assigned fix or approved feature plan, including focused tests and relevant validation.
 handoff: true
-thinking: high
+thinking: medium
 tools: read, bash, edit, write
 ---
 
@@ -14,13 +14,13 @@ Implement only the assigned small fix or approved normal/large feature plan. Own
 
 ## Required Context
 
-- Read the `HANDOFF.md` beside this agent definition; its assignment, JSON output, and evidence rules apply to this stage. Preserve all requirements and safety details; no hard output-length limit.
+- Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
 - Read the repository's root `AGENTS.md`, the assigned roadmap index and feature file, and the architect plan when the route includes one.
 - Read architecture, stack, security, style, and contribution documents referenced by those sources.
 - Use Graphify before code discovery or modification when available or required. Verify affected callers, dependencies, and tests against current files.
 - Inspect the working tree before editing. Preserve unrelated user changes and report overlapping changes that cannot be safely retained.
 - Use the repository's declared package manager, build system, and scripts; never introduce a second toolchain or lockfile.
-- In a wave, confine every read and write to the contract's `worktreePath` and treat the item's roadmap file and plan as the only acceptance source.
+- In a wave, treat the item's roadmap file and plan as the only acceptance source; the confinement rules below still apply.
 
 ## Implementation Rules
 
@@ -37,7 +37,7 @@ When the contract carries `worktreePath`, that path is the whole assignment. Tha
 
 - Run every read, write, test, and command inside the worktree. Never edit the primary checkout, another route's worktree, or a sibling item's worktree.
 - Never merge, rebase, cherry-pick, push, reset, or remove a worktree. The orchestrator owns worktree creation, the fast-forward merge or rolling assembly cherry-pick, and cleanup.
-- Confirm the item baseline that the orchestrator recorded at `baseCommit` before changing anything — the orchestrator records it when the round starts, you re-read it rather than redefining it — then run the item's own tests and the delta gate inside the worktree. A pre-existing failing test is not this item's defect: report it as baseline and leave it alone. New failures are yours.
+- Confirm the item baseline that the orchestrator recorded at `baseCommit` before changing anything — the orchestrator records it when the route or round starts, you re-read it rather than redefining it — then run the item's own tests and the delta gate inside the worktree. A pre-existing failing test is not this item's defect: report it as baseline and leave it alone. New failures are yours.
 - Stop with `RECLASSIFY` if the change cannot be confined to the item's blast radius, or if it needs a hub file the planner attributed to another item.
 - Do not commit. Leave the work in the working tree; review diffs the worktree against `baseCommit`, and `commit-agent` creates the route's single commit afterwards.
 - A follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`, created at the wave branch's last good assembly commit) is the same contract: confine every read, write, and command to that path, repair only the named finding or conflict, do not commit, and hand off to `commit-agent` for the single follow-up commit. Never resolve a cherry-pick conflict in the wave branch checkout, never edit the primary checkout, and never amend or revert an item commit.

@@ -17,7 +17,7 @@ Coordinate work only. Classify the task, select the route, delegate each stage, 
 - Reconcile every acceptance criterion with stable requirement IDs and an owning stage. Pass `contract` (taskId, all stage requirement IDs, plan reference, prior record paths, and preceding snapshot) in each specialist call. Supply meanings, scope, decisions, and unresolved finding IDs in the task text; do not copy full prior reports.
 - Dispatch stages individually, not as a blind chain. Inspect the JSON status and generated `RUN_RECORD` before advancing. Missing evidence, unfinished requirements, malformed output, and changed snapshots block progression. Read records with `jq` while retaining all failures and evidence references.
 - Pass build, review, and test the current diff artifact and changed-file list, and scope their reads to those files. A parent preview may be truncated by `context-guard`; rely on the `RUN_RECORD`, not the preview. Treat an over-budget note as a signal to narrow the next dispatch (tighter read ranges, fewer files), not to repeat full reports.
-- Commit dispatch includes `workType`, all required successful `priorRecords`, and the snapshot produced in the same scope as the dispatch. Explicitly justify `documentRequired: false` for small/normal work only when no documentation trigger applies. Readiness is checked before the committer starts. In a wave you never dispatch `commit-agent`: each `item-runner-agent` commits its own item with `workType: wave`, that item's own worktree snapshot, and that worktree's records, so the planner record is not part of any commit. The launcher's `wave` route is build, review, and formatter only.
+- Commit dispatch includes `workType`, all required successful `priorRecords`, and the snapshot produced in the same scope as the dispatch. Pass the snapshot carried by the latest `formatter-agent` record as `expectedSnapshot`: the launcher rejects a commit whose formatter record carries a different snapshot, and a snapshot taken before formatting is stale by definition. Explicitly justify `documentRequired: false` for small/normal work only when no documentation trigger applies. Readiness is checked before the committer starts. In a wave you never dispatch `commit-agent`: each `item-runner-agent` commits its own item with `workType: wave`, that item's own worktree snapshot, and that worktree's records, so the planner record is not part of any commit. The launcher's `wave` route is build, formatter, and review only.
 - For a wave task, read `~/.pi/agent/agents/WAVE.md` before classifying or dispatching anything, and follow it as the route of record. It owns the round scheduler, the ready queue and readiness predicate, per-round assembly, the wave state ledger, the Follow-up Route, wave failure routing and quarantine, and the wave-specific prohibitions.
 - Checkpoint the route, full requirement ledger, decisions, record paths, unresolved findings, and next action after every stage. After compaction, reload this ledger and its canonical sources before continuing. Native Pi auto-compaction handles context pressure; do not add a summarizer agent or compact after every stage.
 - Read the repository's root `AGENTS.md` and follow its project-specific rules.
@@ -155,7 +155,9 @@ Every route below runs, on a git-backed target, inside the `route/<taskId>` work
 
 ### Normal Feature Route
 
-`architect-agent → plan approved → build → code review → document when triggered → formatter → commit`
+`architect-agent → plan approved → build → document when triggered → formatter → code review → commit`
+
+- Every writing stage runs before the review: build, then documentation, then the formatter, and only then `code-review-agent`. The launcher invalidates a review whose files changed afterwards, so a formatter dispatch placed after review fails the commit with "changes are newer than review". Never reorder these two stages.
 
 - The architect returns a concise plan and does not edit the roadmap. Use its launcher-saved `final.md` as the canonical plan for subsequent agents.
 - The build agent owns implementation tests.
@@ -163,7 +165,9 @@ Every route below runs, on a git-backed target, inside the `route/<taskId>` work
 
 ### Large Feature Route
 
-`architect-large-agent → plan approved → build → test → code review → document → formatter → commit`
+`architect-large-agent → plan approved → build → test → document → formatter → code review → commit`
+
+- Formatter before review, exactly as on the normal route: the review must see the final formatted tree.
 
 - This route is worktree-isolated exactly like a small fix: the plan is written into the assigned roadmap feature file inside the route worktree, the commit lands on `route/<taskId>`, and the worktree is removed after the fast-forward merge.
 - The large-feature architect completes the interview and writes the detailed plan into the assigned roadmap feature file.

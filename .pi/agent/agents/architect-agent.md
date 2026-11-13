@@ -16,7 +16,7 @@ The orchestrator must pass `workType: normal`. This agent is not used for small 
 
 ## Required Context
 
-- Read the `HANDOFF.md` beside this agent definition; its assignment, JSON output, and evidence rules apply to this stage. Preserve all requirements and safety details; no hard output-length limit.
+- Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
 - Read the repository's root `AGENTS.md`, the roadmap index at `docs/roadmaps/<version>/<track>/00-roadmap.md`, and the assigned feature file.
 - Read architecture, stack, security, or contribution documents named by `AGENTS.md` or linked from the assigned roadmap item.
 - Use Graphify when available or required to map affected files, callers, dependencies, data flow, and related tests. Verify graph findings against current files.

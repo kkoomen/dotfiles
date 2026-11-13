@@ -1,60 +1,22 @@
 #!/usr/bin/env bash
 # =============================================================================
-# prune-diff-tracker — delete old diff-tracker session snapshots.
+# prune-diff-tracker — shell-startup hook for diff-tracker retention.
 #
 # Usage: prune-diff-tracker [days]
-#   days  retention window; session dirs older than this are removed.
-#         Defaults to $DIFF_TRACKER_RETENTION_DAYS, else 7.
+#   days  retention window; defaults to $DIFF_TRACKER_RETENTION_DAYS, else 3.
 #
-# Safety:
-#   - never removes the session currently in use ($PI_SESSION_ID)
-#   - skips if another prune is already running (mkdir lock)
-#   - skips if it already ran in the last hour (stamp file)
-#   - exits quietly when diff-tracker storage does not exist
+# The rule lives in one place now: this delegates to `diff-tracker prune`, which
+# removes sessions whose newest activity is older than the window, prunes older
+# diffs inside surviving sessions, and never touches the active Pi session.
+# Throttling, the lock, and the size report are the built-in's responsibility.
 # =============================================================================
-set -euo pipefail
+set -uo pipefail
 
-ROOT="${DIFF_TRACKER_DIR:-$HOME/.pi/diff-tracker}"
-SESSIONS="$ROOT/sessions"
-DAYS="${1:-${DIFF_TRACKER_RETENTION_DAYS:-7}}"
-STAMP="${TMPDIR:-/tmp}/pi-diff-tracker-prune.stamp"
-LOCK="$SESSIONS/.prune.lock"
+TRACKER="${DIFF_TRACKER_BIN:-$HOME/.pi/agent/bin/diff-tracker}"
+DAYS="${1:-${DIFF_TRACKER_RETENTION_DAYS:-3}}"
 
-[[ -d "$SESSIONS" ]] || exit 0
+[[ -x "$TRACKER" ]] || exit 0
+[[ -d "${DIFF_TRACKER_DIR:-$HOME/.pi/diff-tracker}/sessions" ]] || exit 0
 [[ "$DAYS" =~ ^[0-9]+$ ]] || exit 2
 
-# Throttle: at most one run per hour, regardless of how many shells start.
-if [[ -f "$STAMP" ]]; then
-  last="$(stat -f %m "$STAMP" 2>/dev/null || stat -c %Y "$STAMP" 2>/dev/null || echo 0)"
-  now="$(date +%s)"
-  (( now - last < 3600 )) && exit 0
-fi
-
-mkdir "$LOCK" 2>/dev/null || exit 0
-trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
-
-: > "$STAMP"
-
-current="${PI_SESSION_ID:-}"
-candidates=()
-
-# Session dirs are UUIDs; the lock file is not a directory and is skipped anyway.
-while IFS= read -r -d '' dir; do
-  name="$(basename "$dir")"
-  [[ -n "$current" && "$name" == "$current" ]] && continue
-  candidates+=("$dir")
-done < <(find "$SESSIONS" -mindepth 1 -maxdepth 1 -type d -name '*-*' -mtime +"$DAYS" -print0)
-
-# Nothing to do: leave without paying for the size calculation.
-if (( ${#candidates[@]} == 0 )); then
-  exit 0
-fi
-
-freed_before="$(du -sk "$SESSIONS" 2>/dev/null | cut -f1 || echo 0)"
-for dir in "${candidates[@]}"; do
-  rm -rf -- "$dir"
-done
-freed_after="$(du -sk "$SESSIONS" 2>/dev/null | cut -f1 || echo 0)"
-
-printf 'prune-diff-tracker: removed %d session(s) older than %d days, freed %d MB\n' \
-  "${#candidates[@]}" "$DAYS" "$(( (freed_before - freed_after) / 1024 ))"
+exec "$TRACKER" prune --days "$DAYS" --quiet

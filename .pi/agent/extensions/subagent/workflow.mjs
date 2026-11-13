@@ -41,13 +41,65 @@ export function finalText(messages) {
   )
 }
 
-function parseReport(text) {
-  const trimmed = text.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/, '$1')
-  try {
-    return JSON.parse(trimmed)
-  } catch {
-    return null
+/**
+ * Every balanced top-level `{...}` in `text`, in order, ignoring braces inside
+ * JSON strings. Lets a handoff survive a stray sentence or a code fence.
+ */
+function balancedObjects(text) {
+  const objects = []
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== '{') continue
+    let depth = 0
+    let inString = false
+    let escaped = false
+    for (let j = i; j < text.length; j++) {
+      const char = text[j]
+      if (inString) {
+        if (escaped) escaped = false
+        else if (char === '\\') escaped = true
+        else if (char === '"') inString = false
+        continue
+      }
+      if (char === '"') inString = true
+      else if (char === '{') depth++
+      else if (char === '}') {
+        depth--
+        if (depth === 0) {
+          objects.push(text.slice(i, j + 1))
+          i = j
+          break
+        }
+      }
+    }
   }
+  return objects
+}
+
+/**
+ * Parse the handoff from the final message.
+ *
+ * Agents are asked for one bare JSON object, but a sentence before it, a fenced
+ * block, or a schema example earlier in the message used to fail the entire
+ * stage ("Expected one JSON handoff object") and force a cold re-dispatch. Any
+ * well-formed object is accepted; the last one carrying `status` wins, because
+ * that is the handoff rather than an example.
+ */
+export function parseReport(text) {
+  if (typeof text !== 'string' || !text.trim()) return null
+  const candidates = [text.trim(), ...balancedObjects(text)]
+  let fallback = null
+  for (let index = candidates.length - 1; index >= 0; index--) {
+    let parsed
+    try {
+      parsed = JSON.parse(candidates[index])
+    } catch {
+      continue
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
+    if ('status' in parsed) return parsed
+    fallback ??= parsed
+  }
+  return fallback
 }
 
 /** Legacy text failures also stop chains; unrelated user agents keep their format. */
@@ -147,8 +199,7 @@ export function validateReport(text, contract, agentName) {
   return null
 }
 
-/** Referenced command evidence must exist; wrapper failures cannot be relabelled PASS. */
-export function validateCheckEvidence(text, cwd) {
+/** Referenced command evidence must exist; wrapper failures cannot be relabelled PASS. */export function validateCheckEvidence(text, cwd) {
   for (const check of parseReport(text)?.checks ?? []) {
     const file = path.resolve(cwd, check.log)
     try {
@@ -211,6 +262,18 @@ export function codeSnapshot(cwd) {
   return hash.digest('hex')
 }
 
+/**
+ * Why a handoff needs one more turn in the same session, or null when it is acceptable.
+ *
+ * A stopped status (FAIL, BLOCKED, REPLAN_REQUIRED, ...) is a valid handoff and must never be
+ * repaired away, and a parseable handoff keeps every other validator in charge. This is the
+ * single decision the launcher makes before spending a repair turn instead of a whole stage.
+ */
+export function handoffRepairReason(text, contract, agentName, cwd) {
+  if (semanticFailure(text)) return null
+  return validateReport(text, contract, agentName) || validateCheckEvidence(text, cwd) || null
+}
+
 /** Ensure upstream stage records belong to this task and actually passed. */
 export function validatePriorRecords(contract, cwd, agentName) {
   if (contract.expectedSnapshot && codeSnapshot(cwd) !== contract.expectedSnapshot)
@@ -239,18 +302,21 @@ export function validatePriorRecords(contract, cwd, agentName) {
     records.push(record)
   }
   if (agentName === 'commit-agent') {
+    // Order documents the route as well as proving presence: every writing stage
+    // (document, formatter) runs before code review, so a formatting rewrite cannot
+    // invalidate a review that already passed. Keep these arrays in execution order.
     const routes = {
       small: ['build-agent', 'formatter-agent'],
-      normal: ['architect-agent', 'build-agent', 'code-review-agent', 'formatter-agent'],
+      normal: ['architect-agent', 'build-agent', 'formatter-agent', 'code-review-agent'],
       large: [
         'architect-large-agent',
         'build-agent',
         'test-agent',
-        'code-review-agent',
         'document-agent',
         'formatter-agent',
+        'code-review-agent',
       ],
-      wave: ['build-agent', 'code-review-agent', 'formatter-agent'],
+      wave: ['build-agent', 'formatter-agent', 'code-review-agent'],
     }
     const configured = routes[contract.workType]
     if (!configured)

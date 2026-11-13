@@ -62,7 +62,7 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
-import { launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot } from "./workflow.mjs";
+import { launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot, handoffRepairReason } from "./workflow.mjs";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 8;
@@ -1008,6 +1008,8 @@ export interface SingleResult {
 	model?: string;
 	thinking?: string;
 	validationError?: string;
+	/** In-context handoff repair turns used before the stage was written off. */
+	repairs?: number;
 	recordPath?: string;
 	snapshot?: string;
 	stopReason?: string;
@@ -1515,6 +1517,37 @@ async function runSingleAgent(
 		}
 	};
 
+	/**
+	 * A handoff stage that did the work but produced an unparseable report used to be
+	 * re-dispatched from scratch: a new process with a cold cache that re-read the whole
+	 * workspace. Ask the same session for the missing handoff first — one short turn on a
+	 * warm cache instead of a full stage. `PI_SUBAGENT_HANDOFF_REPAIRS=0` restores the old
+	 * behaviour; larger values allow more attempts.
+	 */
+	const maxHandoffRepairs = Math.max(0, Number.parseInt(process.env.PI_SUBAGENT_HANDOFF_REPAIRS ?? "2", 10) || 0);
+	/** Safety valve: a repair prompt the child never answers must not hang the stage. */
+	const handoffRepairTimeoutMs = Math.max(1000, Number.parseInt(process.env.PI_SUBAGENT_REPAIR_TIMEOUT_MS ?? "180000", 10) || 180000);
+	let handoffRepairs = 0;
+	let handoffRepairTimer: ReturnType<typeof setTimeout> | null = null;
+	const clearHandoffRepairTimer = () => {
+		if (handoffRepairTimer) clearTimeout(handoffRepairTimer);
+		handoffRepairTimer = null;
+	};
+	const handoffError = (): string | null => {
+		if (agent.handoff !== true || currentResult.exitCode !== 0) return null;
+		try {
+			return handoffRepairReason(getFinalOutput(currentResult.messages), contract, agent.name, cwd ?? defaultCwd);
+		} catch (error) {
+			return `Cannot validate handoff: ${String(error)}`;
+		}
+	};
+	const handoffRepairPrompt = (error: string) =>
+		`Your handoff was rejected: ${error}\n\n` +
+		"Reply with exactly one JSON object and nothing else — no prose, no code fence, no second object. " +
+		"Keep the work you already did on disk; do not redo it and do not re-read the workspace. " +
+		"Fix only what the rejection names. Required keys: taskId, status, summary, " +
+		"requirements[{id,state,evidence[]}], checks[{command,exitCode,log}], files[], deviations[], unresolved[].";
+
 	try {
 		if (agent.handoff === true) {
 			const error = validateContract(contract) || validatePriorRecords(contract, cwd ?? defaultCwd, agent.name);
@@ -1562,6 +1595,26 @@ async function runSingleAgent(
 				if (event.type === "response" && settleDelivery(event)) return;
 
 				if (event.type === "agent_settled") {
+					clearHandoffRepairTimer();
+					// Repair the handoff in this session before the stage is written off; only a
+					// genuinely unusable run falls through to an orderly shutdown.
+					const error = wasAborted ? null : handoffError();
+					if (error && handoffRepairs < maxHandoffRepairs) {
+						handoffRepairs++;
+						currentResult.repairs = handoffRepairs;
+						emitUpdate();
+						if (writeRpcCommand(child, { type: "prompt", message: handoffRepairPrompt(error) })) {
+							handoffRepairTimer = setTimeout(() => {
+								try {
+									proc.stdin?.end();
+								} catch {
+									/* ignore */
+								}
+							}, handoffRepairTimeoutMs);
+							handoffRepairTimer.unref?.();
+							return;
+						}
+					}
 					// No more automatic work in the child. End stdin so the long-lived
 					// RPC process performs an orderly shutdown and `close` resolves.
 					try {
@@ -1639,6 +1692,7 @@ async function runSingleAgent(
 
 			proc.on("close", (code) => {
 				activeSubagents.delete(child);
+				clearHandoffRepairTimer();
 				if (buffer.trim()) processLine(buffer);
 				// Any delivery this child still owes a response for can never be confirmed now.
 				settleChildExit(child);
@@ -1647,6 +1701,7 @@ async function runSingleAgent(
 
 			proc.on("error", () => {
 				activeSubagents.delete(child);
+				clearHandoffRepairTimer();
 				settleChildExit(child);
 				resolve(1);
 			});
@@ -1690,6 +1745,7 @@ async function runSingleAgent(
 				startedAt: currentResult.startedAt, finishedAt: currentResult.finishedAt,
 				exitCode: currentResult.exitCode, stopReason: currentResult.stopReason,
 				validationError: currentResult.validationError, snapshot: currentResult.snapshot,
+				repairs: currentResult.repairs,
 				usage: currentResult.usage, output,
 				reviewedFiles: agent.name === "code-review-agent" && !currentResult.validationError ? reviewedFileDigests(output, cwd ?? defaultCwd) : undefined,
 				reviewSnapshot: agent.name === "code-review-agent" && !currentResult.validationError ? reviewSnapshot(cwd ?? defaultCwd) : undefined,

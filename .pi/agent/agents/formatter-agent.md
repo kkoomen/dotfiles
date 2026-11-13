@@ -14,7 +14,7 @@ Perform mechanical formatting and lint cleanup only. Use the repository's config
 
 ## Required Context
 
-- Read the `HANDOFF.md` beside this agent definition; its assignment, JSON output, and evidence rules apply to this stage. Preserve all requirements and safety details; no hard output-length limit.
+- Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
 - Read the repository's root `AGENTS.md`, current diff, and formatter or linter configuration relevant to changed files.
 - Use Graphify before changing files when `AGENTS.md` requires it; otherwise do not add repository-discovery work to this mechanical stage.
 - Discover required commands from repository instructions, package scripts, build files, or contribution documentation. Do not assume a language, package manager, formatter, or linter.
@@ -36,7 +36,7 @@ When the contract carries `worktreePath` and `baseCommit`, run this stage inside
 - Format and lint only inside `<worktreePath>`. Never touch the primary checkout, another route's worktree, a sibling item's worktree, or the assembled tree.
 - This write happens before review: the reviewer diffs the worktree afterwards, so a formatting change here is part of the reviewed content and invalidates nothing downstream.
 - Report the route or item ID, worktree path, commands, outcomes, and auto-fixed files. A finding that needs judgment is `FAIL` naming the owning route or item, never a silent behavioral fix.
-- On a single-item route the whole worktree is in scope; the wave bullet below rescopes it to one item.
+- On a single-item route the whole worktree is in scope. A wave item rescopes this stage to that item alone, per `item-runner-agent.md` and `WAVE.md`.
 - A hub file colliding with another item is serialized, not excluded: the colliding item is admitted only after the other item's commit is assembled, so this stage never sees two items' concurrent writes to the same hub file. A mandatory shared generated artifact is exempt and out of scope here — it is not attributed to an item and is regenerated at commit, not formatted.
 
 ## Prohibited Actions

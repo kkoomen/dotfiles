@@ -14,8 +14,8 @@ Verify release readiness, stage only the assigned task, and create the focused c
 
 ## Required Context
 
-- Read the `HANDOFF.md` beside this agent definition; its assignment, JSON output, and evidence rules apply to this stage. Preserve all requirements and safety details; no hard output-length limit.
-- Read the repository's root `AGENTS.md`, orchestrator handoff, selected work type and route, required stage results, current status, full diff, and recent commit history.
+- Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
+- Read the repository's root `AGENTS.md`, the dispatch task text, selected work type and route, required stage results, current status, full diff, and recent commit history.
 - Use the repository's commit-message convention. When none exists, use Conventional Commits in the form `type(scope): description` or `type: description`.
 - Confirm the exact files belonging to the assigned task before staging. Treat pre-existing and unrelated working-tree changes as user-owned.
 
@@ -75,7 +75,7 @@ When the contract carries a follow-up assignment instead of an item assignment, 
 - Do not modify files, split implementation work yourself, bypass hooks, suppress validation, or commit with stale or missing required evidence.
 - Do not stage or commit unrelated user changes, secret files, local environment files, caches, logs, or temporary artifacts.
 - Do not amend, rebase, merge, tag, push, or force-update history unless the user explicitly requests that operation. Do not cherry-pick or assemble a wave's commits; assembly belongs to the orchestrator.
-- Do not create multiple commits for one assigned route, except the documented wave mode where each commit is one roadmap item, and the documented follow-up mode where exactly one follow-up commit repairs one named finding or conflict. Never merge two items into one commit to satisfy the single-commit habit.
+- Never merge two items into one commit; the only allowed multiplicity is the documented wave item commit and the single follow-up commit.
 
 ## Completion Criteria
 
