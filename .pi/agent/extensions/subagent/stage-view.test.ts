@@ -32,6 +32,8 @@ import {
 	shortenPath,
 	stripCdPrefix,
 	stageCost,
+	dispatchedCost,
+	resultCost,
 	stageItems,
 	stageShowsActions,
 	stageSpinnerFrame,
@@ -416,5 +418,45 @@ describe("getDisplayItems", () => {
 
 	test("a transcript of only cd calls renders as no items at all", () => {
 		expect(getDisplayItems([message(call("1", "bash", { command: "cd /repo" }))])).toEqual([]);
+	});
+});
+
+describe("nested spend", () => {
+	/** A result whose own turn cost `cost` and which dispatched `children`. */
+	const result = (cost: number, children: any[] = []) =>
+		({ usage: { cost }, messages: [], nestedSubagents: children }) as any;
+	/** A nested dispatch whose details hold the given results. */
+	const run = (results: any[]) => ({
+		toolCallId: `n${Math.random()}`,
+		agent: "stage",
+		task: "",
+		startedAt: 1,
+		details: { mode: "single", agentScope: "user", projectAgentsDir: null, results },
+	});
+
+	test("a result with no dispatches costs exactly its own spend", () => {
+		expect(resultCost(result(0.0314))).toBe(0.0314);
+	});
+
+	test("dispatched cost is the children's spend, which the parent's usage never holds", () => {
+		const owner = result(0.0314, [run([result(0.0296)]), run([result(0.0122)])]);
+		expect(dispatchedCost(owner)).toBeCloseTo(0.0418, 10);
+		expect(resultCost(owner)).toBeCloseTo(0.0732, 10);
+	});
+
+	test("a nested stage's own dispatches are counted too, so the total never undercounts", () => {
+		const grandchild = run([result(0.5)]);
+		const child = result(0.25, [grandchild]);
+		const owner = result(0.1, [run([child])]);
+		expect(resultCost(owner)).toBeCloseTo(0.85, 10);
+	});
+
+	test("the bottom line equals the sum of the stage lines", () => {
+		const stages = [0, 0, 0.0296, 0.0122, 0, 0];
+		const owner = result(0.0314, stages.map((c) => run([result(c)])));
+		const stageSum = stages.reduce((a, b) => a + b, 0);
+		const footer = resultCost(owner);
+		expect(footer - 0.0314).toBeCloseTo(stageSum, 10);
+		expect(footer).toBeCloseTo(0.0732, 10);
 	});
 });

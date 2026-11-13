@@ -899,7 +899,13 @@ function formatTokens(count: number): string {
 	return `${(count / 1000000).toFixed(1)}M`;
 }
 
-function formatUsageStats(
+/**
+ * A one-line usage summary. `totalCost`, when given, is the result's own spend
+ * plus everything it dispatched, and is what the figure reports; the own share
+ * follows in parentheses. Without it the figure is the result's own spend, which
+ * is all a run that dispatched nothing has anyway.
+ */
+export function formatUsageStats(
 	usage: {
 		input: number;
 		output: number;
@@ -910,6 +916,7 @@ function formatUsageStats(
 		turns?: number;
 	},
 	model?: string,
+	totalCost?: number,
 ): string {
 	const parts: string[] = [];
 	if (usage.turns) parts.push(`${usage.turns} turn${usage.turns > 1 ? "s" : ""}`);
@@ -917,7 +924,11 @@ function formatUsageStats(
 	if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
 	if (usage.cacheRead) parts.push(`R${formatTokens(usage.cacheRead)}`);
 	if (usage.cacheWrite) parts.push(`W${formatTokens(usage.cacheWrite)}`);
-	if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
+	// The parent's usage never includes a child's, so a run that delegated has to be
+	// totalled from the tree, or the bottom line reads smaller than its own stages.
+	const dispatched = totalCost === undefined ? 0 : totalCost - usage.cost;
+	if (dispatched > 0.0000005) parts.push(`$${totalCost!.toFixed(4)} (own $${usage.cost.toFixed(4)})`);
+	else if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
 	if (usage.contextTokens && usage.contextTokens > 0) {
 		parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
 	}
@@ -1146,14 +1157,39 @@ export function stageShowsActions(timing: StageTiming | null): boolean {
 }
 
 /**
- * What a stage cost, summed over every result it produced (a parallel dispatch
- * has one result per task). Null when the stage has no reported usage yet.
+ * Everything a single result dispatched, recursively. A child's `usage.cost` is
+ * its own model spend only: the stages *it* dispatched are separate processes
+ * whose spend lands in their own results, so a total has to walk the tree.
+ */
+export function dispatchedCost(owner: SingleResult, depth = 0): number {
+	if (depth > NESTED_MAX_DEPTH) return 0;
+	const runs = owner.nestedSubagents?.length ? owner.nestedSubagents : buildNestedRuns(owner.messages ?? []);
+	let total = 0;
+	for (const run of runs) {
+		const runDetails = run.details ?? run.liveDetails;
+		if (!runDetails) continue;
+		for (const child of runDetails.results) {
+			total += child.usage?.cost ?? 0;
+			total += dispatchedCost(child, depth + 1);
+		}
+	}
+	return total;
+}
+
+/** A result's own model spend plus every stage it dispatched. */
+export function resultCost(result: SingleResult): number {
+	return (result.usage?.cost ?? 0) + dispatchedCost(result);
+}
+
+/**
+ * What a stage cost: every result it produced (a parallel dispatch has one per
+ * task) plus everything those results dispatched. Null when it reported no usage.
  */
 export function stageCost(run: { details?: SubagentDetails; liveDetails?: SubagentDetails } | undefined): number | null {
 	const runDetails = run?.details ?? run?.liveDetails;
 	if (!runDetails || runDetails.results.length === 0) return null;
 	let total = 0;
-	for (const result of runDetails.results) total += result.usage?.cost ?? 0;
+	for (const result of runDetails.results) total += resultCost(result);
 	return total;
 }
 
@@ -2933,7 +2969,7 @@ export default function (pi: ExtensionAPI) {
 							if (activity) container.addChild(new Text(activity, 0, 0));
 						}
 					}
-					const usageStr = formatUsageStats(r.usage, r.model);
+					const usageStr = formatUsageStats(r.usage, r.model, resultCost(r));
 					const meta = [timing?.label, usageStr].filter(Boolean).join(" · ");
 					if (meta) {
 						container.addChild(new Spacer(1));
@@ -2957,7 +2993,7 @@ export default function (pi: ExtensionAPI) {
 					if (delegating || displayItems.length > COLLAPSED_ITEM_COUNT)
 						text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				}
-				const usageStr = formatUsageStats(r.usage, r.model);
+				const usageStr = formatUsageStats(r.usage, r.model, resultCost(r));
 				const meta = [timing?.label, usageStr].filter(Boolean).join(" · ");
 				if (meta) text += `\n${theme.fg("dim", meta)}`;
 				return new Text(text, 0, 0);
@@ -2974,6 +3010,14 @@ export default function (pi: ExtensionAPI) {
 					total.turns += r.usage.turns;
 				}
 				return total;
+			};
+
+			/** Aggregate row: own spend of every step, plus what the steps dispatched. */
+			const aggregateStats = (results: SingleResult[]) => {
+				const usage = aggregateUsage(results);
+				let total = 0;
+				for (const r of results) total += resultCost(r);
+				return formatUsageStats(usage, undefined, total);
 			};
 
 			if (details.mode === "chain") {
@@ -3029,12 +3073,12 @@ export default function (pi: ExtensionAPI) {
 							container.addChild(new Text(theme.fg("muted", "(no output)"), 0, 0));
 						}
 
-						const stepUsage = formatUsageStats(r.usage, r.model);
+						const stepUsage = formatUsageStats(r.usage, r.model, resultCost(r));
 						const meta = [timing?.label, stepUsage].filter(Boolean).join(" · ");
 						if (meta) container.addChild(new Text(theme.fg("dim", meta), 0, 0));
 					}
 
-					const usageStr = formatUsageStats(aggregateUsage(details.results));
+					const usageStr = aggregateStats(details.results);
 					if (usageStr) {
 						container.addChild(new Spacer(1));
 						container.addChild(new Text(theme.fg("dim", `Total: ${usageStr}`), 0, 0));
@@ -3057,7 +3101,7 @@ export default function (pi: ExtensionAPI) {
 					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
 					else text += `\n${renderDisplayItems(displayItems, 5, getNestedRunMap(r))}`;
 				}
-				const usageStr = formatUsageStats(aggregateUsage(details.results));
+				const usageStr = aggregateStats(details.results);
 				if (usageStr) text += `\n\n${theme.fg("dim", `Total: ${usageStr}`)}`;
 				text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				return new Text(text, 0, 0);
@@ -3123,12 +3167,12 @@ export default function (pi: ExtensionAPI) {
 							container.addChild(new Text(theme.fg("muted", "(no output)"), 0, 0));
 						}
 
-						const taskUsage = formatUsageStats(r.usage, r.model);
+						const taskUsage = formatUsageStats(r.usage, r.model, resultCost(r));
 						const meta = [timing?.label, taskUsage].filter(Boolean).join(" · ");
 						if (meta) container.addChild(new Text(theme.fg("dim", meta), 0, 0));
 					}
 
-					const usageStr = formatUsageStats(aggregateUsage(details.results));
+					const usageStr = aggregateStats(details.results);
 					if (usageStr) {
 						container.addChild(new Spacer(1));
 						container.addChild(new Text(theme.fg("dim", `Total: ${usageStr}`), 0, 0));
@@ -3154,7 +3198,7 @@ export default function (pi: ExtensionAPI) {
 					else text += `\n${renderDisplayItems(displayItems, 5, getNestedRunMap(r))}`;
 				}
 				if (!isRunning) {
-					const usageStr = formatUsageStats(aggregateUsage(details.results));
+					const usageStr = aggregateStats(details.results);
 					if (usageStr) text += `\n\n${theme.fg("dim", `Total: ${usageStr}`)}`;
 				}
 				if (!expanded) text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
