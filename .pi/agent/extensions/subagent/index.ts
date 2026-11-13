@@ -29,9 +29,11 @@
  *     message details, so the tree stays live while agents run).
  *   - Collapsed view of a delegating run: instead of the plumbing between the
  *     stages it dispatched (`cd`, plan writes, gates), the run lists the stages
- *     themselves — `→ ✓ 1:50 document-agent` — each followed by what that
- *     stage did (`Edited file2.md`, `$ npm run format`), indented under a
- *     ├/└ branch line. A run that works directly keeps its ordinary trace.
+ *     themselves — `→ ✓ 1:50 document-agent` — each followed by the last four
+ *     things that stage did (`Edited file2.md`, `$ npm run format (exit code 1)`),
+ *     indented under a ├/└ branch line. A command line carries its exit code, so
+ *     a retry loop reads as `exit code 1` repeated and then `0`. A run that works
+ *     directly keeps its ordinary trace.
  *   - Expanded view shows the agent's final verdict first, then the
  *     full activity trace.
  *   - Work type and mode on every line: the call and each result show the
@@ -77,9 +79,10 @@ const PER_TASK_OUTPUT_CAP = 50 * 1024;
 
 /**
  * Collapsed view of a delegating run: one line per stage it dispatched, then
- * that stage's own actions, indented under it.
+ * the last few things that stage did, indented under it. Four is enough to show
+ * a retry loop (`exit code 1` three times, then `0`) without flooding the line.
  */
-const STAGE_ACTION_COUNT = 8;
+const STAGE_ACTION_COUNT = 4;
 const STAGE_INDENT = "    ";
 
 /** Max indentation depth for the recursive nested-subagent tree. */
@@ -1011,14 +1014,40 @@ function shortenHomePath(value: unknown): string {
 }
 
 /**
+ * Exit code reported by a command's tool result, or null when the result is
+ * missing or not a completed run (aborted, timed out).
+ *
+ * The transcript keeps no numeric exit-code field: a non-zero exit is reported
+ * by the bash tool as an appended `Command exited with code N` in the result
+ * text, and a zero exit is the absence of that line. Anchored to the end of the
+ * text, because that is where the tool appends it — a command whose own output
+ * happens to contain the phrase keeps the real status last.
+ */
+export function exitCodeOf(result: { isError?: boolean; content?: unknown } | undefined): number | null {
+	if (!result) return null;
+	const text = Array.isArray(result.content)
+		? result.content
+				.map((block) => (block && typeof block === "object" && (block as any).type === "text" ? String((block as any).text) : ""))
+				.join("")
+		: "";
+	const reported = /Command exited with code (-?\d+)\s*$/.exec(text.trimEnd());
+	if (reported) return Number(reported[1]);
+	// A failure without that line is a timeout or an abort, not an exit code.
+	return result.isError === true ? null : 0;
+}
+
+/**
  * One short line for what an agent did: a file operation reads as the verb it
  * is ("Edited x"), a shell command keeps the `$` form the activity trace uses.
+ * A command carries its exit code, so a retried command is visible as such.
  */
 export function formatStageAction(
 	toolName: string,
 	args: Record<string, any>,
 	themeFg: (color: any, text: string) => string,
+	exitCode: number | null = null,
 ): string {
+	const code = typeof exitCode === "number" ? themeFg(exitCode === 0 ? "dim" : "error", ` (exit code ${exitCode})`) : "";
 	switch (toolName) {
 		case "edit":
 			return themeFg("muted", "Edited ") + themeFg("accent", shortenHomePath(args.file_path ?? args.path));
@@ -1030,9 +1059,9 @@ export function formatStageAction(
 			const command = typeof args.command === "string" ? args.command : "...";
 			// A bare `rm <file>` is the removal it performs, not a shell invocation.
 			const removed = /^\s*rm\s+(?:-[A-Za-z]+\s+)*([^\s;&|]+)\s*$/.exec(command);
-			if (removed) return themeFg("muted", "Removed ") + themeFg("accent", shortenHomePath(removed[1]));
+			if (removed) return themeFg("muted", "Removed ") + themeFg("accent", shortenHomePath(removed[1])) + code;
 			const preview = command.length > 60 ? `${command.slice(0, 60)}...` : command;
-			return themeFg("muted", "$ ") + themeFg("toolOutput", preview);
+			return themeFg("muted", "$ ") + themeFg("toolOutput", preview) + code;
 		}
 		case "grep":
 			return (
@@ -1082,10 +1111,20 @@ export function stageActionLines(
 ): string[] {
 	const runDetails = run?.details ?? run?.liveDetails;
 	if (!runDetails) return [];
+	// Results arrive as their own messages, so pair them with their calls first:
+	// the exit code of a command lives on its result, not on the call that ran it.
+	const results = new Map<string, { isError?: boolean; content?: unknown }>();
+	for (const child of runDetails.results) {
+		for (const message of child.messages) {
+			if (message.role === "toolResult") results.set(message.toolCallId, message as any);
+		}
+	}
 	const lines: string[] = [];
 	for (const child of runDetails.results) {
 		for (const item of getDisplayItems(child.messages)) {
-			if (item.type === "toolCall") lines.push(formatStageAction(item.name, item.args, themeFg));
+			if (item.type !== "toolCall") continue;
+			const exitCode = item.name === "bash" ? exitCodeOf(results.get(item.id)) : null;
+			lines.push(formatStageAction(item.name, item.args, themeFg, exitCode));
 		}
 	}
 	if (limit <= 0 || lines.length <= limit) return lines;

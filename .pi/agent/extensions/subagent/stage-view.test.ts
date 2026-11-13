@@ -21,6 +21,7 @@
 import { describe, expect, test } from "bun:test";
 import os from "node:os";
 import {
+	exitCodeOf,
 	formatStageAction,
 	isDelegatingRun,
 	stageActionLines,
@@ -60,6 +61,15 @@ describe("formatStageAction", () => {
 		expect(formatStageAction("edit", { file_path: "file2.md" }, plain)).toBe("Edited file2.md");
 		expect(formatStageAction("write", { file_path: "file2.md" }, plain)).toBe("Created file2.md");
 		expect(formatStageAction("read", { file_path: "file2.md" }, plain)).toBe("Read file2.md");
+	});
+
+	test("a command carries its exit code", () => {
+		expect(formatStageAction("bash", { command: "npm run format" }, plain, 1)).toBe("$ npm run format (exit code 1)");
+		expect(formatStageAction("bash", { command: "npm run format" }, plain, 0)).toBe("$ npm run format (exit code 0)");
+		// Unknown (still running, aborted, timed out): no claim either way.
+		expect(formatStageAction("bash", { command: "npm run format" }, plain, null)).toBe("$ npm run format");
+		// A file operation has no exit code to report.
+		expect(formatStageAction("edit", { file_path: "file2.md" }, plain, 0)).toBe("Edited file2.md");
 	});
 
 	test("a bare rm reads as the removal it performs", () => {
@@ -184,5 +194,91 @@ describe("stageSpinnerFrame", () => {
 	test("holds one frame for a whole second, so a repaint at 1 Hz animates it", () => {
 		expect(stageSpinnerFrame(3_100)).toBe(stageSpinnerFrame(3_900));
 		expect(stageSpinnerFrame(3_900)).not.toBe(stageSpinnerFrame(4_000));
+	});
+});
+
+describe("exitCodeOf", () => {
+	const text = (value: string) => ({ content: [{ type: "text", text: value }] });
+
+	test("reads the appended status line of a failed command", () => {
+		expect(exitCodeOf({ ...text("boom\n\nCommand exited with code 1"), isError: true })).toBe(1);
+		expect(exitCodeOf({ ...text("Command exited with code 127\n"), isError: true })).toBe(127);
+	});
+
+	test("a successful command exits 0", () => {
+		expect(exitCodeOf({ ...text("all good"), isError: false })).toBe(0);
+	});
+
+	test("the phrase inside the command's own output does not win over the real status", () => {
+		const message = { ...text("Command exited with code 3\n\nCommand exited with code 1"), isError: true };
+		expect(exitCodeOf(message)).toBe(1);
+	});
+
+	test("a timeout or abort reports no exit code", () => {
+		expect(exitCodeOf({ ...text("Command timed out after 30 seconds"), isError: true })).toBeNull();
+		expect(exitCodeOf(undefined)).toBeNull();
+	});
+});
+
+describe("stageActionLines exit codes", () => {
+	const bashCall = (id: string, command: string) => ({
+		role: "assistant",
+		content: [{ type: "toolCall", id, name: "bash", arguments: { command } }],
+	});
+	const bashResult = (id: string, code: number) => ({
+		role: "toolResult",
+		toolCallId: id,
+		toolName: "bash",
+		isError: code !== 0,
+		content: [{ type: "text", text: code === 0 ? "ok" : `boom\n\nCommand exited with code ${code}` }],
+	});
+
+	test("pairs each command with its own result, in order", () => {
+		const run = {
+			details: details([
+				bashCall("1", "npm run format"),
+				bashResult("1", 1),
+				bashCall("2", "npm run format:fix"),
+				bashResult("2", 0),
+			]),
+		};
+		expect(stageActionLines(run, plain)).toEqual([
+			"$ npm run format (exit code 1)",
+			"$ npm run format:fix (exit code 0)",
+		]);
+	});
+
+	test("a retry loop reads newest last, windows to the last four", () => {
+		const messages: any[] = [];
+		[1, 1, 1, 0].forEach((code, index) => {
+			messages.push(bashCall(String(index), "npm run format"));
+			messages.push(bashResult(String(index), code));
+		});
+		const run = { details: details(messages) };
+		expect(stageActionLines(run, plain)).toEqual([
+			"$ npm run format (exit code 1)",
+			"$ npm run format (exit code 1)",
+			"$ npm run format (exit code 1)",
+			"$ npm run format (exit code 0)",
+		]);
+
+		// Six runs: the two oldest drop, the newest stays at the bottom.
+		const longer: any[] = [];
+		[1, 1, 1, 1, 1, 0].forEach((code, index) => {
+			longer.push(bashCall(String(index), `attempt${index}`));
+			longer.push(bashResult(String(index), code));
+		});
+		expect(stageActionLines({ details: details(longer) }, plain)).toEqual([
+			"... 2 earlier",
+			"$ attempt2 (exit code 1)",
+			"$ attempt3 (exit code 1)",
+			"$ attempt4 (exit code 1)",
+			"$ attempt5 (exit code 0)",
+		]);
+	});
+
+	test("a command with no result yet shows no exit code", () => {
+		const run = { details: details([bashCall("1", "bun test")]) };
+		expect(stageActionLines(run, plain)).toEqual(["$ bun test"]);
 	});
 });
