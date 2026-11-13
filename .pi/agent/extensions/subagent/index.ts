@@ -944,7 +944,7 @@ export function formatToolCall(
 ): string {
 	switch (toolName) {
 		case "bash": {
-			const command = stripCdPrefix((args.command as string) || "...");
+			const command = oneLine(stripCdPrefix((args.command as string) || "..."));
 			const preview = command.length > 60 ? `${command.slice(0, 60)}...` : command;
 			return themeFg("muted", "$ ") + themeFg("toolOutput", preview);
 		}
@@ -1039,11 +1039,24 @@ export function shortenPath(value: unknown, base: string = process.cwd()): strin
 export function stripCdPrefix(command: string): string {
 	let result = command.trim();
 	for (;;) {
-		const next = result.replace(/^cd\s+(?:"[^"]*"|'[^']*'|[^&;|]+?)\s*(?:&&|;)\s*/, "");
+		const next = result.replace(/^cd\s+(?:"[^"]*"|'[^']*'|[^&;|\n]+?)\s*(?:&&|;|\n)\s*/, "");
 		if (next === result) break;
 		result = next;
 	}
-	return /^cd(?:\s|$)/.test(result) && !/[&;|]/.test(result) ? "" : result;
+	// A newline separates statements as surely as `;` does, so it counts here too.
+	return /^cd(?:\s|$)/.test(result) && !/[&;|\n]/.test(result) ? "" : result;
+}
+
+/**
+ * A command collapsed onto one line. A heredoc or a multi-statement `&&` chain
+ * would otherwise wrap inside the trace and push every following row down the
+ * terminal; the line is a label, not the script.
+ */
+export function oneLine(command: string): string {
+	return command
+		.replace(/\s*\n\s*/g, " ")
+		.replace(/\s{2,}/g, " ")
+		.trim();
 }
 
 /** `file.js:85-204` — the part of a read that says what it looked at. */
@@ -1100,7 +1113,7 @@ export function formatStageAction(
 		case "read":
 			return themeFg("muted", "Read ") + themeFg("accent", readTarget(args));
 		case "bash": {
-			const command = stripCdPrefix(typeof args.command === "string" ? args.command : "...");
+			const command = oneLine(stripCdPrefix(typeof args.command === "string" ? args.command : "..."));
 			// A bare `rm <file>` is the removal it performs, not a shell invocation.
 			const removed = /^\s*rm\s+(?:-[A-Za-z]+\s+)*([^\s;&|]+)\s*$/.exec(command);
 			if (removed) return themeFg("muted", "Removed ") + themeFg("accent", shortenPath(removed[1])) + code;
@@ -1202,6 +1215,16 @@ export function formatStageCost(cost: number): string {
 	return `$${cost.toFixed(4).replace(/\.?0+$/, "")}`;
 }
 
+/**
+ * The cost segment of a stage line, or the empty string when there is nothing
+ * to report: a stage that cost exactly nothing (`$0`, e.g. one that failed before
+ * running a model turn, or a command stage) says so by staying silent.
+ */
+export function stageCostLabel(cost: number | null): string {
+	if (cost === null || cost <= 0) return "";
+	return formatStageCost(cost);
+}
+
 /** What a stage's own agent did, newest last, one short line each. */
 export function stageActionLines(
 	run: { details?: SubagentDetails; liveDetails?: SubagentDetails } | undefined,
@@ -1223,7 +1246,8 @@ export function stageActionLines(
 		for (const item of getDisplayItems(child.messages)) {
 			if (item.type !== "toolCall") continue;
 			const exitCode = item.name === "bash" ? exitCodeOf(results.get(item.id)) : null;
-			lines.push(formatStageAction(item.name, item.args, themeFg, exitCode));
+			// One command, one row: a script in the arguments must not wrap the list.
+			lines.push(oneLine(formatStageAction(item.name, item.args, themeFg, exitCode)));
 		}
 	}
 	if (limit <= 0 || lines.length <= limit) return lines;
@@ -2802,9 +2826,11 @@ export default function (pi: ExtensionAPI) {
 							const shown = sweep.slice(0, READ_SWEEP_TARGETS).map((call) => readTarget(call.args));
 							const hidden = sweep.length - shown.length;
 							lines.push(
-								theme.fg("muted", `read ${sweep.length} files · `) +
-									theme.fg("accent", shown.join(", ")) +
-									(hidden > 0 ? theme.fg("dim", ` +${hidden}`) : ""),
+								oneLine(
+									theme.fg("muted", `read ${sweep.length} files · `) +
+										theme.fg("accent", shown.join(", ")) +
+										(hidden > 0 ? theme.fg("dim", ` +${hidden}`) : ""),
+								),
 							);
 							i += sweep.length - 1;
 							continue;
@@ -2822,7 +2848,7 @@ export default function (pi: ExtensionAPI) {
 						item.name === "subagent" && runMap ? nestedRunLabel(runMap.get(item.id)) : null;
 					let line = `${theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme.fg.bind(theme), nestedLabel)}`;
 					if (repeat > 1) line += theme.fg("dim", ` ×${repeat}`);
-					lines.push(line);
+					lines.push(oneLine(line));
 					i += repeat - 1;
 				}
 				return lines.join("\n");
@@ -2847,7 +2873,8 @@ export default function (pi: ExtensionAPI) {
 					// A finished stage also answers "what did that cost?" — the running
 					// one does not, because its total is still climbing.
 					const cost = stageTiming && !stageTiming.running ? stageCost(run) : null;
-					if (cost !== null) header += theme.fg("dim", ` ${formatStageCost(cost)}`);
+					const costLabel = stageCostLabel(cost);
+					if (costLabel) header += theme.fg("dim", ` ${costLabel}`);
 					lines.push(header);
 					// Actions are the live tail of a stage that is still working. Once it
 					// finished, its marker and time are the whole result and Ctrl+O holds
@@ -2911,7 +2938,7 @@ export default function (pi: ExtensionAPI) {
 						const run = runMap.get(item.id);
 						const label = nestedRunLabel(run);
 						const base = `${theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme.fg.bind(theme), label)}`;
-						out += `${base}\n`;
+						out += `${oneLine(base)}\n`;
 						if (run && (run.details ?? run.liveDetails)) {
 							const runDetails = run.details ?? run.liveDetails!;
 							for (const child of runDetails.results) {
@@ -2924,7 +2951,7 @@ export default function (pi: ExtensionAPI) {
 						}
 					} else {
 						const base = `${theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme.fg.bind(theme))}`;
-						out += `${base}\n`;
+						out += `${oneLine(base)}\n`;
 					}
 				}
 				return out;

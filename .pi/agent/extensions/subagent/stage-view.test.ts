@@ -24,10 +24,12 @@ import os from "node:os";
 import {
 	exitCodeOf,
 	formatStageAction,
+	oneLine,
 	getDisplayItems,
 	isDelegatingRun,
 	stageActionLines,
 	formatStageCost,
+	stageCostLabel,
 	readTarget,
 	shortenPath,
 	stripCdPrefix,
@@ -371,6 +373,11 @@ describe("stripCdPrefix", () => {
 		expect(stripCdPrefix("bun test")).toBe("bun test");
 	});
 
+	test("a newline separates statements, so the command after it survives", () => {
+		expect(stripCdPrefix("cd /x\nls -l")).toBe("ls -l");
+		expect(stripCdPrefix("cd /x\n")).toBe("");
+	});
+
 	test("a command that only changes directory strips to nothing", () => {
 		expect(stripCdPrefix("cd /x")).toBe("");
 		expect(stripCdPrefix("cd")).toBe("");
@@ -458,5 +465,68 @@ describe("nested spend", () => {
 		const footer = resultCost(owner);
 		expect(footer - 0.0314).toBeCloseTo(stageSum, 10);
 		expect(footer).toBeCloseTo(0.0732, 10);
+	});
+});
+
+describe("oneLine", () => {
+	test("collapses a heredoc or a multi-statement chain onto one line", () => {
+		expect(oneLine("cat > plan.md <<'EOF'\n# Plan\n- one\nEOF")).toBe("cat > plan.md <<'EOF' # Plan - one EOF");
+		expect(oneLine("cd /x &&\n  bun test")).toBe("cd /x && bun test");
+		expect(oneLine("a\n\n\nb")).toBe("a b");
+	});
+
+	test("never leaves a newline behind", () => {
+		const rendered = oneLine("line1\nline2\r\nline3");
+		expect(rendered.includes("\n")).toBe(false);
+		expect(rendered.includes("\r")).toBe(false);
+	});
+
+	test("a rendered command line is single-line even for a script", () => {
+		const script = "cat > file.sh <<'EOF'\n#!/bin/bash\necho hi\nEOF\nbash file.sh";
+		expect(formatStageAction("bash", { command: script }, plain, 0).includes("\n")).toBe(false);
+	});
+});
+
+describe("a stage action can never wrap", () => {
+	const script = "cat >> firebase-functions/test/gemini.test.js <<'EOF'\n\ntest(\"background\", async () => {\n  expect(1).toBe(1);\n});\nEOF";
+	const run = {
+		details: {
+			mode: "single",
+			agentScope: "user",
+			projectAgentsDir: null,
+			results: [
+				{
+					messages: [
+						{ role: "assistant", content: [{ type: "toolCall", id: "1", name: "bash", arguments: { command: script } }] },
+						{
+							role: "toolResult",
+							toolCallId: "1",
+							toolName: "bash",
+							isError: false,
+							content: [{ type: "text", text: "ok" }],
+						},
+					],
+				},
+			],
+		},
+	} as any;
+
+	test("a heredoc command renders on one line", () => {
+		const lines = stageActionLines(run, plain);
+		expect(lines).toHaveLength(1);
+		expect(lines[0]!.includes("\n")).toBe(false);
+		expect(lines[0]!.startsWith("$ cat >> firebase-functions/test/gemini.test.js")).toBe(true);
+		expect(lines[0]!.endsWith("(exit code 0)")).toBe(true);
+	});
+});
+
+describe("stageCostLabel", () => {
+	test("names a real cost", () => {
+		expect(stageCostLabel(0.0265)).toBe("$0.0265");
+	});
+
+	test("stays silent when the stage cost nothing", () => {
+		expect(stageCostLabel(0)).toBe("");
+		expect(stageCostLabel(null)).toBe("");
 	});
 });
