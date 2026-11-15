@@ -31,6 +31,7 @@ import {
 	getDisplayItems,
 	isDelegatingRun,
 	stageActionLines,
+	ownTraceLimit,
 	formatStageCost,
 	stageCostLabel,
 	readTarget,
@@ -167,6 +168,21 @@ describe("stageActionLines", () => {
 		const calls = Array.from({ length: 5 }, (_, i) => assistantCall(String(i), "bash", { command: `cmd${i}` }));
 		const lines = stageActionLines({ details: details(calls) }, plain, 2);
 		expect(lines).toEqual(["... 3 earlier", "$ cmd3", "$ cmd4"]);
+	});
+});
+
+describe("ownTraceLimit", () => {
+	test("a coordinator's own trace uses the stage action window", () => {
+		expect(ownTraceLimit("orchestrator-agent")).toBe(4);
+	});
+
+	test("any other directly dispatched agent keeps its ordinary trace", () => {
+		// 10 is COLLAPSED_ITEM_COUNT, module-private by design.
+		expect(ownTraceLimit("build-agent")).toBe(10);
+	});
+
+	test("the agent name must match exactly, so a near miss keeps the full trace", () => {
+		expect(ownTraceLimit("orchestrator")).toBe(10);
 	});
 });
 

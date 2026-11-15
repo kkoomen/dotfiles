@@ -35,7 +35,8 @@
  *     (`Edited file2.md`, `$ npm run format (exit code 1)`), indented under a
  *     ├/└ branch line. A command line carries its exit code, so a retry loop
  *     reads as `exit code 1` repeated and then `0`. A finished stage is only its
- *     marker, time and name. A run that works directly keeps its ordinary trace.
+ *     marker, time and name. A run that works directly keeps its ordinary trace,
+ *     except a coordinator's own trace uses the stage-action window.
  *   - Expanded view shows the agent's final verdict first, then the
  *     full activity trace.
  *   - Work type and mode on every line: the call and each result show the
@@ -1301,6 +1302,16 @@ function windowActionLines(
  */
 export function isCommandStage(result: { model?: string } | undefined): boolean {
 	return result?.model === "command";
+}
+
+/**
+ * How many of its own items a directly dispatched run shows when collapsed. A
+ * coordinator's own commands are the plumbing between its stages, so its trace
+ * gets the same four-line window a stage's actions get; any other directly
+ * dispatched agent keeps its ordinary ten-item trace. Exact name match only.
+ */
+export function ownTraceLimit(agent: string): number {
+	return agent === "orchestrator-agent" ? STAGE_ACTION_COUNT : COLLAPSED_ITEM_COUNT;
 }
 
 interface NestedSubagentRun {
@@ -3129,8 +3140,13 @@ export default function (pi: ExtensionAPI) {
 					// A command stage ran no tool calls, so its checks are what it executed;
 					// its transcript is the handoff record and would read as JSON here.
 					const commandLines = isCommandStage(r) ? renderCommandActions(r) : "";
-					text += `\n${commandLines || (delegating ? renderStageList(displayItems, runMap) : renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT, runMap))}`;
-					if (delegating || displayItems.length > COLLAPSED_ITEM_COUNT || (isCommandStage(r) && (r.checks?.length ?? 0) > STAGE_ACTION_COUNT))
+					const limit = ownTraceLimit(r.agent);
+					text += `\n${commandLines || (delegating ? renderStageList(displayItems, runMap) : renderDisplayItems(displayItems, limit, runMap))}`;
+					if (
+						delegating ||
+						displayItems.length > limit ||
+						(isCommandStage(r) && (r.checks?.length ?? 0) > STAGE_ACTION_COUNT)
+					)
 						text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				}
 				const usageStr = formatUsageStats(r.usage, r.model, resultCost(r));
