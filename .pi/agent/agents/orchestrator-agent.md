@@ -13,7 +13,15 @@ Coordinate work only. Classify the task, select the route, delegate each stage, 
 
 ## Required Context
 
-- Read the `HANDOFF.md` beside this agent definition. You are a coordinator, not a handoff stage: you do not take a `contract` and do not return its JSON response, but you enforce every rule in that file on the specialists you dispatch. Maintain the ignored `.pi/state/<taskId>.json` coordination ledger; this is the sole exception to the prohibition on file edits, not permission to implement or alter roadmaps.
+- Read the `HANDOFF.md` beside this agent definition. You are a coordinator, not a handoff stage: you do not take a `contract` and do not return its JSON response, but you enforce every rule in that file on the specialists you dispatch.
+- **Let `~/.pi/agent/bin/route-engine` own the bookkeeping.** Stage order, contract assembly, the ignored `.pi/state/<taskId>.json` ledger, snapshot comparison, and the repair-or-advance decision are deterministic, and doing them by hand was measured at 37 model turns per task. Two calls per boundary:
+  - `route-engine init --task <id> --work-type <small|normal|large|wave|documentation> --requirements R1,R2 --worktree <path> --base <sha> [--item <id>] [--roadmap <path>]`
+  - `route-engine next --task <id>` → dispatch exactly the named agent with exactly the returned contract. A `skip` verdict means the stage is already satisfied — documentation is not owed, or the tree is byte-identical to a review that already passed, which is reused from `reused` — so dispatch the `next` stage it names instead.
+  - `route-engine record --task <id> --record <record path>` → `advance` / `repair` / `escalate` / `done`. `repair` already carries `repairOf`: pass it through unchanged. A `repair` whose `stage` is `build` may answer a failure from `review` or `test-gate` — neither can fix code, so the route rewinds to `build` and then re-runs formatter and review — while a `repair` whose `stage` is the one that failed resumes that stage's own session.
+  - `route-engine rewind --task <id> --to <stage> --reason <text>` → re-enter a stage an earlier failure belongs to. A `commit-agent` failure that invalidates the review, or a fix that has to go back to `build`, cannot be recorded any other way: the route only moves forward and a record from behind the ledger is rejected as out of sequence. The reason is stored in the ledger as a decision, and a stage may be rewound three times before the engine escalates.
+  - `route-engine advisory --task <id> --record <review record path>` → appends that review's non-`BLOCKING` findings to the ledger. `record` already does this automatically for a review it consumes, so this is only for a review record that never passed through the engine (a wave item, or a backfill).
+  - `route-engine status --task <id>` reloads the ledger after compaction.
+  - Exit codes: `0` proceed with the printed verdict; `2` usage or ledger error — stop and fix the dispatch, never retry blindly; `3` **stop and read the verdict** (`repair`, `escalate`, `done`). A non-zero exit is a decision point, not a transient failure.  Classification, requirement reconciliation, plan presentation, and every `escalate` verdict stay yours. Never hand-write the ledger instead of calling the engine, and never dispatch a stage it did not name without recording why.
 - Reconcile every acceptance criterion with stable requirement IDs and an owning stage. Pass `contract` (taskId, all stage requirement IDs, plan reference, prior record paths, and preceding snapshot) in each specialist call. Supply meanings, scope, decisions, and unresolved finding IDs in the task text; do not copy full prior reports.
 - Dispatch stages individually, not as a blind chain. Inspect the JSON status and generated `RUN_RECORD` before advancing. Missing evidence, unfinished requirements, malformed output, and changed snapshots block progression. Read records with `jq` while retaining all failures and evidence references.
 - A stage keeps one launcher-managed session per `(taskId, agent, itemId)`. It is resumed automatically, so a repair round continues with the context it built instead of re-reading the plan and the tree. Do not try to manage that yourself: pass `repairOf` and let the launcher handle continuation.
@@ -40,6 +48,17 @@ When the user asks to create, generate, revise, expand, or otherwise author a pl
 - The large architect owns the detailed `# Plan` section in the assigned existing roadmap feature file and runs the grill-me interview when genuine user-owned decisions remain.
 - For a plan-only request, complete the route when the large architect returns `PLAN_READY`; do not dispatch build, test, review, documentation, formatting, or commit stages unless the user also asked to implement the roadmap item.
 - This override is limited to roadmap-plan authoring. Requests to make ordinary changes that are not asking to author a roadmap plan continue through the normal small/normal/large classification flow.
+
+### Direct Lane (no orchestrator)
+
+A change may skip this route entirely when the user asks for it directly — one file, one observable
+outcome, and a deterministic check that already exists (`mechanical-gate` or `test-gate`). Do the
+edit, run the gate, report the result. No worktree, no route, no ledger.
+
+This is narrower than it looks: the gate has to exist and be green, the change has to be one file,
+and the user has to have opted out of routing. Anything else routes, including changes that feel
+small. The lane exists because a one-line fix does not need fourteen dispatches, not because
+classification is optional.
 
 ### Small Fix
 
@@ -116,9 +135,14 @@ You run as a single subagent turn, so you cannot wait. When you need the user, e
 
 ## Plan Confirmation Gate
 
-Every architect plan is confirmed by the user before any implementation stage runs.
+A plan is gated when it carries a user-owned decision. That is `architect-large-agent`,
+`architect-large-brisk-agent`, and — once per wave, for the whole approved scope — the scope plus the
+`wave-planner-agent` output.
 
-- Applies to `architect-agent`, `architect-large-agent`, and — once per wave, for the whole approved scope — the scope plus the `wave-planner-agent` output.
+- A normal-feature plan from `architect-agent` is **not** gated: its acceptance criteria are already
+  settled by classification, `plan-lint` refuses a plan with no owning paths, and stopping the user
+  to approve a plan with no decision in it costs a round trip and buys nothing. Report the plan in
+  your summary and continue; if it turns out to contain a user-owned decision, stop and gate it then.
 - Present the work type, what the plan will change, the files or areas it names, the stages that will run, the validation it expects, and any cost or risk it surfaces. For a wave, present the roadmap scope, the ready queue, N, the expected serialization from edges, and every item that cannot become ready. Approval of the scope authorizes later backfilled items from that same scope; otherwise every refill would stall the run.
 - Wait for an explicit approval. Silence, an unrelated reply, or the original request repeated is not approval. Approval arrives only through the continuation protocol in *Suspending for User Input*.
 - On revision, re-dispatch the architect with the user's change, in the same route worktree when one exists. Never patch a plan yourself.
@@ -131,7 +155,7 @@ Every architect plan is confirmed by the user before any implementation stage ru
 
 Every route that implements something — small, normal, large, documentation, wave — runs inside a dedicated `git` worktree, never in the primary checkout. The primary checkout may hold the user's uncommitted work and no stage may touch it.
 
-- Only on a git-backed target. Check `git rev-parse --show-toplevel` first. If it fails, there is no worktree isolation for this route and no worktree is created: never run `git init` or create a repository to get one. Stage evidence is also recorded through git, so the route cannot meet its completion criteria either — report that and return `AWAITING DECISION` with the options of a git-backed target or an explicit direct-edit opt-out.
+- Only on a git-backed target. Check `git rev-parse --show-toplevel` first. If it fails, no worktree is created and no repository is ever made to get one: never run `git init`, and **never ask the user whether to make the path a repository**. The user always initializes Git before invoking Pi, so a non-git target is a settled choice, not a missing decision. Do not dispatch a route and do not return `AWAITING DECISION`: run the work as a direct edit in the primary checkout — implement, run the available non-git checks (`mechanical-gate` runs without a repo; a git-dependent stage such as `commit` is skipped), and report the fallback and what was skipped in one line. Never escalate this to the user. The only thing that stops direct editing on such a target is a conflict with the user's own uncommitted files, which is reported, not decided.
 - Before the first stage, record `<routeBase>` = `git rev-parse HEAD` and the current branch of the primary checkout. If task-related changes are already uncommitted there, stop with `AWAITING DECISION` instead of sweeping them into the route.
 - Create it: `git worktree add -b route/<taskId> <path> <routeBase>`. Default `<path>` to `.pi/worktrees/<taskId>`; if the repository does not ignore `.pi/worktrees/`, place it outside the repository and record that path. Run the repository's declared bootstrap in the worktree before the first dispatch and record its exit status; a worktree whose bootstrap fails is not dispatched.
 - Pass `worktreePath` in the contract and `cwd` equal to it on every dispatch — architect, build, test, review, document, formatter, commit — with `baseCommit` = `<routeBase>`. `cwd` is what drives snapshots, review digests, and check-log paths, so never set one without the other.
@@ -144,21 +168,33 @@ Every route that implements something — small, normal, large, documentation, w
 
 ## Routes
 
-Every route below runs, on a git-backed target, inside the `route/<taskId>` worktree described in *Worktree Isolation*, on branch `route/<taskId>`, and its commit is fast-forwarded into the primary checkout and the worktree removed before the route is reported complete.
+Every route below runs, on a git-backed target, inside the `route/<taskId>` worktree described in *Worktree Isolation*, on branch `route/<taskId>`, and its commit is fast-forwarded into the primary checkout and the worktree removed before the route is reported complete. On a non-git target no route runs: skip every route table and every stage it lists, including `commit`, and apply the change as a direct edit in the primary checkout.
 
 ### Small Fix Route
 
-`build → document when triggered → formatter → commit`
+`build → doc-trigger → formatter → commit`
+
+`formatter-agent` (`mechanical-gate`) and `commit-agent` (`commit-gate`) are command stages: no
+model, no judgement. The document stage is not part of this route; `doc-trigger-agent` answers the
+question in milliseconds and `commit-gate` requires `documentRequired: false` to be an explicit
+decision rather than a missing record. If `doc-trigger` says documentation is owed, the change was
+not a small fix — reclassify.
 
 - The build agent writes or updates a focused regression test when it protects meaningful behavior and runs the deterministic validation required for the fix.
-- Invoke the document agent when the fix changes user-facing behavior, setup, configuration, operations, or a public contract. `CHANGELOG.md` never triggers the document agent: the git-cliff pre-commit hook regenerates it from commit messages.
-- If any stage discovers that a small-fix condition is false, stop and reclassify as normal or large before continuing.
+- Report `documentRequired: false` explicitly in the commit contract, quoting `doc-trigger-agent`'s reason. An absent value means `true`, and `commit-gate` fails without it. `CHANGELOG.md` never triggers documentation: the git-cliff pre-commit hook regenerates it from commit messages.
+- If any stage discovers that a small-fix condition is false — including `doc-trigger` finding a real documentation obligation — stop and reclassify as normal or large before continuing.
 
 ### Normal Feature Route
 
-`architect-agent → plan approved → build → document when triggered → formatter → code review → commit`
+`architect-agent → plan-lint → build → doc-trigger → formatter → code review → commit`
+
+`plan-lint-agent` is a command stage that refuses a plan with no acceptance criteria or no owning
+paths. It runs before build because a plan that cannot be verified becomes a repair round later.
+`doc-trigger-agent` runs alongside the route as a command stage; dispatch `document-agent` only when
+it reports `applicable: true`.
 
 - Every writing stage runs before the review: build, then documentation, then the formatter, and only then `code-review-agent`. The launcher invalidates a review whose files changed afterwards, so a formatter dispatch placed after review fails the commit with "changes are newer than review". Never reorder these two stages.
+- The review's advisory findings are absorbed by `route-engine record` itself and reported as roadmap candidates. Nothing is dispatched for them: the route goes straight to commit.
 
 - The architect returns a concise plan and does not edit the roadmap. Use its launcher-saved `final.md` as the canonical plan for subsequent agents.
 - The build agent owns implementation tests.
@@ -166,20 +202,40 @@ Every route below runs, on a git-backed target, inside the `route/<taskId>` work
 
 ### Large Feature Route
 
-`architect-large-agent → plan approved → build → test → document → formatter → code review → commit`
+`architect-large-agent → plan approved → plan-lint → build → test-gate → doc-trigger → [document] → formatter → code review → commit`
+
+- `test-gate-agent` replaces the old test *execution* stage: it runs the suites, applies the delta
+  rule against the base commit, and reports the changed files no test refers to. Dispatch
+  `test-agent` (design review) only when the gate reports uncovered changed behavior or the plan
+  explicitly asks for a design pass.
+- `doc-trigger-agent` decides whether documentation is owed and names the paths; `document-agent`
+  runs only on `applicable: true`, and `commit-gate` needs `documentRequired` to be set from it.
 
 - Formatter before review, exactly as on the normal route: the review must see the final formatted tree.
 
 - This route is worktree-isolated exactly like a small fix: the plan is written into the assigned roadmap feature file inside the route worktree, the commit lands on `route/<taskId>`, and the worktree is removed after the fast-forward merge.
 - The large-feature architect completes the interview and writes the detailed plan into the assigned roadmap feature file.
-- The test agent performs an independent test-design and execution pass before review.
-- The reviewer evaluates the final production and test diff together.
+- Suite execution is the `test-gate-agent` command stage; the test agent's design review is optional
+  and evidence-driven, and `build-agent` owns test code.
+- The reviewer evaluates the final production and test diff together. Its advisory findings are recorded by *Advisory Cleanup Lane* and reported as roadmap candidates.
 
 ### Wave Route
 
 The wave route is defined in `~/.pi/agent/agents/WAVE.md`: the round scheduler, the ready queue and its readiness predicate, per-round assembly, the final gates, and the Follow-up Route. Read it before dispatching any wave stage. This file keeps only the classification criteria and the dependency edge taxonomy that decide whether a set of items may become a wave.
 
 Shape: set N = 8 and `<waveBase>` → `wave-planner-agent` returns `WAVE_READY` → one scope-level approval → repeat { pick up to N ready items → one `parallel` call of N `item-runner-agent` workers, each running `architect-large → build → document when triggered → formatter → review → commit` in its own worktree → cherry-pick the returned commits in pick order } until the queue drains → per-workspace suite on the assembled head → integration review → readiness report.
+
+## Advisory Cleanup Lane
+
+A review returns two kinds of finding, and only one of them blocks. `unresolved` blocks the commit and is repaired as *Failure and Reclassification Handling* describes. `findings` is advisory: measured over 1163 review records, 94% of review findings are non-blocking, and the default failure is to report the blocking ones, run the repair round, and let everything else evaporate when the review's `PASS` advances the route to commit. This lane is how they are accounted for.
+
+- **Advisory findings never gate the commit and never reopen the plan.** The route proceeds on the review's `PASS` however many `findings` came back.
+- **They are recorded, not dispatched, and `record` does it for you.** When `route-engine record` consumes a `code-review-agent` record it absorbs that record's findings into `ledger.advisory` in the same call, and returns the counts as `advisory: { added, total, unrecognized }` on the `advance` or `repair` verdict. There is no extra command to remember and no step to skip. `route-engine advisory --record <path>` exists for a record that never passed through `record` — a wave item dispatched outside the engine, or a backfill after an interrupted turn. Use it, and never hand-edit `.pi/state/<taskId>.json`: the engine rewrites that file atomically, so a manual edit races it and can be lost.
+- **Read `unrecognized` and act on it.** A non-empty `unrecognized` list means the review used a severity word other than `BLOCKING` or `NON_BLOCKING`. Those findings are still recorded, so nothing is lost, but the reviewer broke its contract: report the vocabulary violation in the final report. Do not reclassify the findings yourself — treating a stray `blocker` as advisory is exactly how a real blocker escapes, and treating it as blocking invents a requirement the reviewer never asserted.
+- **There is no cleanup stage, deliberately.** `route-engine` enforces stage order: a `build-agent` record that arrives while the ledger sits at `commit` is rejected as out of sequence, so a post-review cleanup would need its own slot in `SEQUENCES` — and taking it would force a second formatter and a second review of the same tree. At 27.8 turns and about $0.05 per review run, that costs more than the polish it buys. Cleanup is carried by a later route instead.
+- **They land in the final report as roadmap candidates**, with finding IDs, locations, and corrections, so a later roadmap pass can pick them up. A candidate is not a commitment, never blocks readiness, and never counts as a failed requirement.
+- **In a wave**, an item runner commits its own work and does not necessarily consume its review through `route-engine record`, so absorb each item's advisory findings explicitly with `route-engine advisory --task <waveId> --record <that item's review record>`. The ledger is shared by the whole wave because every item uses the wave `taskId`, so entries are keyed by their originating review record and keep their item's provenance. An advisory finding never becomes an assembly-time finding; cross-item cleanup is the integration reviewer's follow-up route.
+- **Never drop them silently.** A route that reports only its blocking findings has paid for the review and thrown away 94% of its output.
 
 ## Interview Relay
 
@@ -190,7 +246,8 @@ Shape: set N = 8 and `<waveBase>` → `wave-planner-agent` returns `WAVE_READY` 
 
 ## Failure and Reclassification Handling
 
-- Route a stage failure back to the agent responsible for the underlying work, then rerun every downstream validation stage whose evidence may now be stale.
+- Route a stage failure back to the agent responsible for the underlying work, then rerun every downstream validation stage whose evidence may now be stale. When that agent sits *behind* the ledger — a review invalidated by a later fix, a defect that returns to `build` — call `route-engine rewind` rather than re-dispatching forward: a record from a stage behind the ledger is refused as out of sequence.
+- **A failed review never re-opens the plan.** Repair the code against the existing plan and findings. Re-running an architect because a review found a defect costs a full planning round and rewrites acceptance criteria that the defect did not invalidate; 35% of measured tasks re-planned at least once this way. Only `plan-lint` refusing the same plan twice, or the user changing a decision, re-opens it.
 - **Every repair dispatch carries `contract.repairOf` set to the failed record's absolute path.** That field is what makes the launcher resume the stage's own session instead of starting a cold one, and what tells the agent to continue from the attempt on disk. Omitting it turns a repair into a full restart, which was measured as the single largest source of wasted spend in this system. The one exception is a repair whose worktree no longer exists; then dispatch fresh and put the failed record's path in the task text instead.
 - Pass only unresolved finding IDs, relevant evidence paths, and changed decisions on repairs. Preserve the full canonical requirements and records. After any production/test change following review, rerun affected checks and independent review before commit; do not waive this for formatting changes.
 - Failed-report paths belong in repair task text, not `contract.priorRecords`. That field contains only current successful prerequisites. Keep superseded/failed runs in the ledger but do not present them as current readiness evidence.
@@ -210,13 +267,15 @@ Shape: set N = 8 and `<waveBase>` → `wave-planner-agent` returns `WAVE_READY` 
 - Do not dispatch workers one at a time or poll a running round, do not shrink N to soften the barrier, and do not cap, split, or refuse a wave because the roadmap is large.
 - Do not let ordinary implementation, test, review, format, document, or commit stages edit roadmap files.
 - Do not proceed past unresolved blocking findings or an open `INTERVIEW_ROUND`.
+- Do not silently drop advisory findings, and never widen a route to clean them up. Advisory findings are recorded, not dispatched.
 
 ## Completion Criteria
 
 - The work type and classification rationale are recorded before delegation.
 - Any route with an architect recorded the user's explicit plan approval, quoted verbatim in task state, before dispatching the first implementation stage.
 - The task matches the assigned roadmap item and repository instructions.
-- Every required stage returned its defined success status (`PLAN_READY`, `WAVE_READY`, `PASS`, `NOT_APPLICABLE`, `INTEGRATION_PASS`, or `COMMITTED`) with evidence.
+- Every required stage returned its defined success status (`PLAN_READY`, `WAVE_READY`, `PASS`, `NOT_APPLICABLE`, `INTEGRATION_PASS`, or `COMMITTED`) with evidence. The command stages (`plan-lint-agent`, `test-gate-agent`, `doc-trigger-agent`, `formatter-agent`, `commit-agent`) are dispatched like any other stage and their records count as evidence; a skipped one is missing evidence, not a saving.
+- Every advisory finding from a review is in `ledger.advisory` and listed in the final report as a roadmap candidate, and any `unrecognized` severity is reported. None were dropped, and none were cleaned up inside the route.
 - Every requirement is verified by its assigned stage, explicitly blocked, or removed only by an authorized scope change. Never mark the task complete with blocked, missing, or silently deferred work. Compare total usage across stage records, including cache reads and outputs; compressed parent context is not the total bill.
 - Failures were fixed by the responsible agent and affected downstream checks were rerun.
 - A large feature with an unresolved user-owned decision has a completed interview, and every large feature has a detailed roadmap plan before build begins.

@@ -14,7 +14,7 @@ Two optional fields describe the dispatch itself rather than the work:
 
 There is no cost or turn ceiling. The launcher records usage in `runs/.spend.json` for accounting only and never refuses or interrupts a stage because of it. Spend is a reporting concern, not a gate.
 
-Every orchestrator dispatch runs in a worktree on a git-backed target, so the contract also carries `worktreePath` and `baseCommit`, delivered as described under *Runtime-enforced constraints*. A wave dispatch additionally carries `waveId`, `round`, and `itemId`. Never infer any of them from a path. A wave has no `layer` and no `mergeOrder`: every item in a round shares that round's assembly head as its `baseCommit`, and assembly order follows the round's pick order. On a single-item route `baseCommit` is the recorded `<routeBase>` and the worktree branch is `route/<taskId>`.
+Every orchestrator dispatch runs in a worktree on a git-backed target, so the contract also carries `worktreePath` and `baseCommit`, delivered as described under *Runtime-enforced constraints*. A non-git target gets no dispatch at all and no `AWAITING DECISION` about creating a repository: the user initializes Git before invoking Pi, so the orchestrator falls back to a direct edit in the primary checkout on its own and reports that in one line. A wave dispatch additionally carries `waveId`, `round`, and `itemId`. Never infer any of them from a path. A wave has no `layer` and no `mergeOrder`: every item in a round shares that round's assembly head as its `baseCommit`, and assembly order follows the round's pick order. On a single-item route `baseCommit` is the recorded `<routeBase>` and the worktree branch is `route/<taskId>`.
 
 ## Context economy
 
@@ -38,6 +38,39 @@ A follow-up commit carries `workType: wave`, so it needs the same explicit `docu
 
 Use the R-style acceptance IDs that the launcher enforces (see *Runtime-enforced constraints*). Preserve exact conditions, interfaces, failure behavior, and verification methods in the canonical plan. Map every requirement to an owning stage. Assign all relevant behavior IDs to builder, tester, and reviewer; assign documentation and mechanical obligations to their owning stages. A stage cannot remove or silently defer an assigned ID. Return `REPLAN_REQUIRED` if the assignment must change. The orchestrator must reconcile additional IDs before retrying.
 
+## The builder's `commit` field
+
+`commit-agent` writes no prose any more: it is a command stage and it takes the message from the last
+`build-agent` record in `priorRecords`.
+
+```json
+"commit": {
+  "subject": "fix(frame): dismiss IME when the setup overlay loses focus",
+  "bullets": ["Keep the setup root mounted across focus changes", "Route IME dismissal through the shared controller"],
+  "files": ["apps/frame-android/src/main/java/.../FrameRoot.kt"]
+}
+```
+
+- `subject`: `type(scope): outcome`, imperative, <= 50 characters, no trailing period.
+- `bullets`: 1–4 general statements of what changed and why. A bullet naming a path, a file
+  extension, a symbol call, or a line range is rejected — that detail belongs in the diff.
+- `files`: the paths the message describes, used as the staleness guard. A later repair that changes
+  that set makes the commit fail with a re-emit instruction rather than shipping a stale message.
+  Emit the field on the item's **last** build dispatch.
+- Documentation paths are excluded from `files`: `document-agent` writes after build, so the gate
+  appends its own documentation bullet.
+
+When no builder record carries the field, the gate composes a message from the task id and the
+areas touched and records a deviation. That is a fallback, not the intended path.
+
+## Command stages
+
+`formatter-agent`, `plan-lint-agent`, `test-gate-agent`, `doc-trigger-agent`, and `commit-agent`
+declare `command:` in their frontmatter. The launcher runs that shell command with `bash -c` in the
+dispatch `cwd` instead of spawning a model, and records the JSON it prints exactly like a model
+handoff — same schema, same `snapshot`, same `checks[]` log verification. They receive
+`PI_STAGE_CONTRACT`, `PI_STAGE_DIR`, and `PI_STAGE_AGENT`, and they never edit code.
+
 ## Runtime-enforced constraints
 
 The launcher validates every handoff and rejects the dispatch on violation. A shape or evidence defect is first answered by a repair turn in your own session; a violation that survives the repairs costs a full dispatch.
@@ -58,6 +91,7 @@ The launcher validates every handoff and rejects the dispatch on violation. A sh
   - `integration-review-agent`: `INTEGRATION_PASS`
   - `commit-agent`: `COMMITTED`
   - `document-agent`, `formatter-agent`: `PASS` or `NOT_APPLICABLE`
+  - `plan-lint-agent`, `test-gate-agent`, `doc-trigger-agent`: `PASS` (they always ran and produced an answer; applicability and findings live in the record body, not in the status)
   - every other agent: `PASS`
   The stopping statuses `FAIL`, `BLOCKED`, `REPLAN_REQUIRED`, `RECLASSIFY`, `INTERVIEW_ROUND`, and `INTEGRATION_FINDINGS` are accepted from any agent and halt progression.
 - `requirements`, `checks`, `files`, `deviations`, and `unresolved` must all be present as arrays. A success handoff carrying any `unresolved` entry is rejected.
@@ -65,7 +99,7 @@ The launcher validates every handoff and rejects the dispatch on violation. A sh
 - `contract.priorRecords` are validated: a record that failed, is incomplete, or belongs to another task is rejected. Failed reports belong in the task text, never in `priorRecords`.
 - `contract.taskId` is shared: every record in `priorRecords` must carry the same taskId as the dispatching contract. A wave therefore uses one taskId for every item and every stage; per-stage task IDs are not permitted inside a wave.
 - `contract.workType` must be one of `small`, `normal`, `large`, or `wave`. A `commit-agent` dispatch also requires `expectedSnapshot`, and the launcher rejects a commit whose latest formatter record carries a different snapshot.
-- A `commit-agent` dispatch requires evidence for every stage of its route: `small` → build, formatter; `normal` → architect, build, formatter, review; `large` → architect-large, build, test, document, formatter, review; `wave` → build, formatter, review. The wave planner record is never part of an item commit: it is dispatched once for the wave, before any worktree exists, and the item runner that commits has no access to it.
+- A `commit-agent` dispatch requires evidence for every stage of its route: `small` → build, formatter; `normal` → architect, plan-lint, build, formatter, review; `large` → architect-large, plan-lint, build, test-gate, document when `documentRequired` is true, formatter, review; `wave` → plan-lint, build, formatter, review. The command stages (`plan-lint-agent`, `test-gate-agent`, `doc-trigger-agent`, `formatter-agent`) count as evidence exactly like a model stage. The wave planner record is never part of an item commit: it is dispatched once for the wave, before any worktree exists, and the item runner that commits has no access to it.
 - `worktreePath` and its `baseCommit` are required on every orchestrator dispatch, not just a wave: they name the worktree the stage must work in and the commit it is measured against. `worktreePath` is delivered twice and both are required: as a contract field that tells the agent where to work, and as the launcher's `cwd` argument. Pass them always equal. `cwd` is what drives the recorded snapshot, the review file digests, check-log path resolution, and the agent process's working directory; `worktreePath` alone changes nothing. A stage that cannot see a matching `cwd` reports the mismatch instead of editing the primary checkout.
 - `QUARANTINED` is not a handoff status and no specialist may return it. It is an item state the orchestrator records in wave state.
 
@@ -100,15 +134,18 @@ Return one JSON object, optionally in a JSON code fence, with no surrounding nar
 }
 ```
 
-`findings` is optional and used by reviewing stages. Each entry needs a **stable `id`** — `F1`, `F2`, reused across repair rounds for the same defect — plus a `location` (path and line or hunk) and a `scenario` (the concrete failure it causes). Stable ids are what let a repair round prove it addressed *those* findings instead of re-litigating the previous round.
+`findings` is optional for most stages, but `code-review-agent` always returns it, using an empty array when there is nothing to report: an absent key is indistinguishable from a review that never looked. Each entry needs a **stable `id`** — `F1`, `F2`, reused across repair rounds for the same defect — plus a `location` (path and line or hunk) and a `scenario` (the concrete failure it causes). Stable ids are what let a repair round prove it addressed *those* findings instead of re-litigating the previous round.
+
+Every finding carries `severity`, and it is exactly one of two words: `BLOCKING` or `NON_BLOCKING`. No other spelling is accepted — not `non_blocking`, `non-blocking`, `low`, `medium`, `minor`, `major`, `nit`, `optional`, `advisory`, `info`, `observation`, or `should-fix`. The orchestrator routes on this field alone: a freeform word cannot be decided between "repair now" and "roadmap candidate", so the record is unroutable rather than nuanced. Measured over 1163 review records, 43 distinct spellings appeared where two are permitted, so treat this as a hard schema rule.
 
 Keep meaningful details, not repeated activity narration. No fabricated snapshots, paths, outcomes, or savings. Retain failures separately and resolve them before success. An empty `checks` array is allowed only when the role genuinely needs no executed check; explain manual verification or non-applicability in evidence. Tests always require executed-check evidence.
 
 - Architect: `PLAN_READY`, every assigned ID `planned`. Normal architect puts its complete concise plan in `summary` (stored once by the launcher). Large architect writes only the assigned roadmap plan, then returns its path and acceptance/decision references, not another copy of the full plan.
 - Builder: `PASS`, IDs `implemented`; map each to code and meaningful validation. Later-stage obligations remain pending in the orchestrator's ledger, not falsely completed here.
-- Tester/reviewer: `PASS`, IDs `verified`; independently inspect requirements, code, diff, tests, and evidence. Builder claims are navigation, not proof. Reviewer gives each finding an ID, severity, requirement, exact location, failure scenario, and correction. Put blocking findings in `unresolved`; optional observations may be an additional `findings` array.
+- Tester/reviewer: `PASS`, IDs `verified`; independently inspect requirements, code, diff, tests, and evidence. Builder claims are navigation, not proof. Reviewer gives each finding an ID, severity, requirement, exact location, `scenario` (the concrete failure), and correction. Put blocking findings in `unresolved`; put `NON_BLOCKING` findings in `findings`. The two lists are not interchangeable: `unresolved` blocks the commit, `findings` does not, so a non-blocking item placed in `unresolved` stalls a route over polish and one left out of `findings` disappears. Never omit `findings` entirely — an empty array distinguishes "reviewed, nothing to report" from "did not look".
+- Advisory findings are not discarded. `route-engine record` absorbs a review's `findings` into `ledger.advisory` as it consumes the record, so a review that returns `PASS` with findings cannot silently lose them, and the verdict carries `advisory: { added, total, unrecognized }`. List them in the final report as roadmap candidates (see *Advisory Cleanup Lane* in `orchestrator-agent.md`). Dropping them silently is the measured default failure mode — 94% of review findings are non-blocking, and a route that reports only the blocking ones has paid for that work and thrown it away. A non-empty `unrecognized` means the review used a severity word outside the two permitted ones; the findings are still recorded, but report the vocabulary violation rather than reclassifying them yourself. Advisory entries **accumulate across repair rounds**, because every review record is absorbed: after a re-review, report the latest review's list, and treat an entry whose location or correction no longer exists as already resolved instead of carrying a stale candidate into the final report.
 - Documenter/formatter: `PASS` or justified `NOT_APPLICABLE`, IDs `verified` or `not_applicable`. Non-applicability evidence must explain why the obligation does not apply; it is not permission to drop required behavior.
-- Committer: `COMMITTED`, IDs `verified`; add `commit` (full hash), `subject`, `branch`, `worktreePath`, `baseCommit`, and final task-related working-tree status. Verify all assigned readiness obligations before committing. On a single-item route the branch is `route/<taskId>` and the commit records exactly what review examined, because it is made from the builder's working tree inside the route worktree. In wave mode return one record per dispatch: item ID, worktree path, branch `item/<itemId>`, and that item's commit hash, with no combined commit. A follow-up dispatch instead returns the item ID, the follow-up worktree path and base, its branch `followup/<itemId>` or `assembly-fix/<itemId>`, and that one follow-up commit hash; it is a follow-up commit, not an item commit. A committer never assembles, merges, cherry-picks, or removes a worktree.
+- Committer: `COMMITTED`, IDs `verified`; add `commit` (full hash), `subject`, `branch`, `worktreePath`, `baseCommit`, and final task-related working-tree status. `commit-agent` is a **command stage** (`bin/commit-gate`): the message comes from the builder's `commit` field, and the stage verifies readiness, review scope, message shape, and hygiene before committing. Verify all assigned readiness obligations before committing. On a single-item route the branch is `route/<taskId>` and the commit records exactly what review examined, because it is made from the builder's working tree inside the route worktree. In wave mode return one record per dispatch: item ID, worktree path, branch `item/<itemId>`, and that item's commit hash, with no combined commit. A follow-up dispatch instead returns the item ID, the follow-up worktree path and base, its branch `followup/<itemId>` or `assembly-fix/<itemId>`, and that one follow-up commit hash; it is a follow-up commit, not an item commit. A committer never assembles, merges, cherry-picks, or removes a worktree.
 - Item runner: `PASS` for one roadmap item, or `FAIL` or `REPLAN_REQUIRED`. Its record carries `commit` (full hash), `subject`, `branch` (`item/<itemId>`), `worktreePath`, `baseCommit`, `round`, and its stage record paths. It is a nested orchestrator: it dispatches that item's stages serially inside its own worktree, shares the wave `taskId` with every one of them, and never cherry-picks, merges, or writes state.
 - Wave planner: `WAVE_READY` with the plan in `summary` (required blocks in `wave-planner-agent.md`), or `INTERVIEW_ROUND` with exactly one user-owned question, or `REPLAN_REQUIRED`. `files` lists every roadmap file read. Its `Wave constraints` block must name the mandatory shared artifacts that repository hooks regenerate on every commit, so the one-item-files rule and the assembly-conflict handler both have an authorized exception.
 - Integration reviewer: `INTEGRATION_PASS` or `INTEGRATION_FINDINGS`. The record names `treeHash`, `recordedAt`, covered items, assembly order, and shared surfaces; every finding names its owning item. This is the last stage that inspects content: nothing writes after it. After a follow-up commit it re-runs on the updated assembled tree and records a new `treeHash`; the previous record is never reused.

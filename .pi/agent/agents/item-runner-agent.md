@@ -26,11 +26,13 @@ Never edit a roadmap file, `.pi/state`, the wave branch, or the primary checkout
 Dispatch these serially, inside `<worktreePath>`, each with `cwd` set to it:
 
 1. `architect-large-agent` — `workType: large`. Validate that the item's existing `# Plan` is complete and implementable; rewrite it only when it is genuinely unimplementable, and only inside that item's own roadmap file. An `INTERVIEW_ROUND` is returned upward, never answered by you.
-2. `build-agent` — `workType: wave`. Implement, add focused tests, run the item's own suite plus the delta gate against the baseline recorded at `baseCommit`. It does not commit.
-3. `document-agent` — `workType: wave`, only when that item has a documentation trigger, limited to the planner's attributed paths.
-4. `formatter-agent` — `workType: wave`.
-5. `code-review-agent` — `workType: wave`, item scope, judging only that item's plan and blast radius.
-6. `commit-agent` — `workType: wave`, with the formatter record's `snapshot` as `expectedSnapshot` (the launcher compares the two verbatim), the item's own records in `priorRecords`, and an explicit `documentRequired`: `true` when step 3 ran, `false` when the item was checked and has no documentation trigger. The launcher treats an absent value as `true`, so omitting it fails the commit on a missing document record.
+2. `plan-lint-agent` — `workType: wave`, command stage. Refuses a plan with no acceptance criteria or no owning paths; a `FAIL` goes back to the architect, never to you.
+3. `build-agent` — `workType: wave`. Implement, add focused tests, run the item's own suite plus the delta gate against the baseline recorded at `baseCommit`. It does not commit.
+4. `doc-trigger-agent` — `workType: wave`, command stage. Sets `documentRequired` from its `applicable` field.
+5. `document-agent` — `workType: wave`, only when step 4 reported `applicable: true`, limited to the planner's attributed paths.
+6. `formatter-agent` — `workType: wave`, command stage.
+7. `code-review-agent` — `workType: wave`, item scope, judging only that item's plan and blast radius.
+8. `commit-agent` — `workType: wave`, command stage, with the formatter record's `snapshot` as `expectedSnapshot` (the launcher compares the two verbatim), the item's own records in `priorRecords`, and an explicit `documentRequired` taken from step 4 (`true` when step 5 ran, `false` when the trigger said it was not owed). An absent value means `true`, and omitting it fails the commit on a missing document record. The message comes from `build-agent`'s `commit` field, so the last build dispatch must carry it.
 
 Then return. Do not start a seventh stage and do not touch another item.
 

@@ -22,16 +22,17 @@ const levels = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max
  */
 export const ROUTE_STAGES = {
   small: ['build-agent', 'formatter-agent'],
-  normal: ['architect-agent', 'build-agent', 'formatter-agent', 'code-review-agent'],
+  normal: ['architect-agent', 'plan-lint-agent', 'build-agent', 'formatter-agent', 'code-review-agent'],
   large: [
     'architect-large-agent',
+    'plan-lint-agent',
     'build-agent',
-    'test-agent',
-    'document-agent',
+    'test-gate-agent',
     'formatter-agent',
     'code-review-agent',
   ],
-  wave: ['build-agent', 'formatter-agent', 'code-review-agent'],
+  wave: ['plan-lint-agent', 'build-agent', 'formatter-agent', 'code-review-agent'],
+  documentation: ['document-agent', 'formatter-agent'],
 }
 
 /** Invalid settings fail visibly instead of silently changing reasoning effort. */
@@ -345,15 +346,21 @@ export function validatePriorRecords(contract, cwd, agentName) {
   if (agentName === 'commit-agent') {
     // Order documents the route as well as proving presence: every writing stage
     // (document, formatter) runs before code review, so a formatting rewrite cannot
-    // invalidate a review that already passed. Keep these arrays in execution order.
+    // invalidate a review that already passed. Keep these arrays in execution order,
+    // and keep them equal to `bin/commit-gate`'s `REQUIRED`, which is the other half
+    // of the same gate: a stage listed here but never run blocks the commit before the
+    // command stage can accept it.
     const routes = ROUTE_STAGES
     const configured = routes[contract.workType]
     if (!configured)
-      return 'Commit requires contract.workType: small, normal, large, or wave'
+      return `Commit requires contract.workType: ${Object.keys(routes).join(', ')}`
     if (!contract.expectedSnapshot) return 'Commit requires a current expectedSnapshot'
-    const required = [...configured]
-    if (contract.documentRequired !== false && ['small', 'normal', 'wave'].includes(contract.workType))
-      required.push('document-agent')
+    // `document-agent` is conditional everywhere except the documentation route, where the
+    // change *is* documentation. An absent `documentRequired` means true, so it is required.
+    const required = configured.filter(
+      (stage) => stage !== 'document-agent' || contract.documentRequired !== false || contract.workType === 'documentation',
+    )
+    if (contract.documentRequired !== false && !required.includes('document-agent')) required.push('document-agent')
     for (const stage of required) {
       if (!records.some((record) => record.agent === stage))
         return `Commit lacks successful ${stage} evidence`

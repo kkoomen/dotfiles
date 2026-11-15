@@ -1260,16 +1260,47 @@ export function stageActionLines(
 	// A command stage ran no tool calls, so its handoff checks are what it executed.
 	if (lines.length === 0) {
 		for (const child of runDetails.results) {
-			for (const check of child.checks ?? []) {
-				lines.push(
-					oneLine(formatStageAction("bash", { command: check.command }, themeFg, check.exitCode)),
-				);
-			}
+			lines.push(...checkActionLines(child.checks, themeFg, 0));
 		}
 	}
+	return windowActionLines(lines, themeFg, limit);
+}
+
+/**
+ * The commands a command stage ran (`checks[]` of its handoff), newest last.
+ * A command stage has no transcript, so these are the actions to show in its
+ * place — the same `$ command (exit code N)` lines a model stage's own tool
+ * calls produce.
+ */
+export function checkActionLines(
+	checks: { command: string; exitCode: number }[] | undefined,
+	themeFg: (color: any, text: string) => string,
+	limit = STAGE_ACTION_COUNT,
+): string[] {
+	const lines = (checks ?? []).map((check) =>
+		oneLine(formatStageAction("bash", { command: check.command }, themeFg, check.exitCode)),
+	);
+	return windowActionLines(lines, themeFg, limit);
+}
+
+/** The tail of an action list: the last `limit` rows plus how many it hid. */
+function windowActionLines(
+	lines: string[],
+	themeFg: (color: any, text: string) => string,
+	limit: number,
+): string[] {
 	if (limit <= 0 || lines.length <= limit) return lines;
 	const hidden = lines.length - limit;
 	return [themeFg("muted", `... ${hidden} earlier`), ...lines.slice(-limit)];
+}
+
+/**
+ * True for a command stage: a launcher-run shell stage with no model transcript.
+ * Its output is a handoff record, not a conversation, so the recorded checks are
+ * the actions it ran and the only thing worth showing in their place.
+ */
+export function isCommandStage(result: { model?: string } | undefined): boolean {
+	return result?.model === "command";
 }
 
 interface NestedSubagentRun {
@@ -3014,6 +3045,14 @@ export default function (pi: ExtensionAPI) {
 				return out;
 			};
 
+			/**
+			 * A command stage's actions are the checks it ran. Its transcript is one handoff
+			 * record, so printing that would read as JSON where every other agent shows a
+			 * trace of commands.
+			 */
+			const renderCommandActions = (r: SingleResult, limit?: number): string =>
+				checkActionLines(r.checks, theme.fg.bind(theme), limit).join("\n");
+
 			if (details.mode === "single" && details.results.length === 1) {
 				const r = details.results[0];
 				const isError = isFailedResult(r);
@@ -3046,19 +3085,25 @@ export default function (pi: ExtensionAPI) {
 						if (finalOutput) {
 							container.addChild(new Markdown(finalOutput.trim(), 0, 0, mdTheme));
 						}
-						if (toolCalls.length > 0) {
+						const commandActivity = isCommandStage(r) ? renderCommandActions(r, 0) : "";
+						if (toolCalls.length > 0 || commandActivity) {
 							const runMap = getNestedRunMap(r);
 							// A delegating run is opened to see the stages, not every tool call
 							// of every stage: each one shows its own last few actions.
 							const delegating = isDelegatingRun(displayItems);
+							// A command stage has no tool calls; its checks are the trace.
 							const activity = delegating
 								? renderStageList(displayItems, runMap, "expanded")
 								: renderActivityTree(r);
 							container.addChild(new Spacer(1));
-							container.addChild(
-								new Text(theme.fg("muted", delegating ? "─── Stages ───" : "─── Activity ───"), 0, 0),
-							);
-							if (activity) container.addChild(new Text(activity, 0, 0));
+							const heading = commandActivity
+								? "─── Checks ───"
+								: delegating
+									? "─── Stages ───"
+									: "─── Activity ───";
+							container.addChild(new Text(theme.fg("muted", heading), 0, 0));
+							if (commandActivity || activity)
+								container.addChild(new Text(commandActivity || activity, 0, 0));
 						}
 					}
 					const usageStr = formatUsageStats(r.usage, r.model, resultCost(r));
@@ -3081,8 +3126,11 @@ export default function (pi: ExtensionAPI) {
 					// A run that dispatches agents is shown as the stages it started, not as
 					// the plumbing between them; a run that works directly keeps its trace.
 					const delegating = isDelegatingRun(displayItems);
-					text += `\n${delegating ? renderStageList(displayItems, runMap) : renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT, runMap)}`;
-					if (delegating || displayItems.length > COLLAPSED_ITEM_COUNT)
+					// A command stage ran no tool calls, so its checks are what it executed;
+					// its transcript is the handoff record and would read as JSON here.
+					const commandLines = isCommandStage(r) ? renderCommandActions(r) : "";
+					text += `\n${commandLines || (delegating ? renderStageList(displayItems, runMap) : renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT, runMap))}`;
+					if (delegating || displayItems.length > COLLAPSED_ITEM_COUNT || (isCommandStage(r) && (r.checks?.length ?? 0) > STAGE_ACTION_COUNT))
 						text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				}
 				const usageStr = formatUsageStats(r.usage, r.model, resultCost(r));
@@ -3156,9 +3204,10 @@ export default function (pi: ExtensionAPI) {
 							container.addChild(new Text(theme.fg("muted", "Verdict:"), 0, 0));
 							container.addChild(new Markdown(finalOutput.trim(), 0, 0, mdTheme));
 						}
-						if (toolCalls.length > 0) {
-							container.addChild(new Text(theme.fg("muted", "Activity:"), 0, 0));
-							const activity = renderActivityTree(r);
+						const commandActivity = isCommandStage(r) ? renderCommandActions(r, 0) : "";
+						if (toolCalls.length > 0 || commandActivity) {
+							container.addChild(new Text(theme.fg("muted", commandActivity ? "Checks:" : "Activity:"), 0, 0));
+							const activity = commandActivity || renderActivityTree(r);
 							if (activity) container.addChild(new Text(activity, 0, 0));
 						}
 						if (!finalOutput && displayItems.length === 0) {
@@ -3190,7 +3239,9 @@ export default function (pi: ExtensionAPI) {
 					const timing = getAgentTiming(r);
 					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)}${r.workType ? theme.fg("warning", ` · ${r.workType}`) : ""} ${rIcon}`;
 					if (timing) text += ` ${theme.fg("dim", timing.label)}`;
+					const commandLines = isCommandStage(r) ? renderCommandActions(r, 5) : "";
 					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
+					else if (commandLines) text += `\n${commandLines}`;
 					else text += `\n${renderDisplayItems(displayItems, 5, getNestedRunMap(r))}`;
 				}
 				const usageStr = aggregateStats(details.results);
@@ -3250,9 +3301,10 @@ export default function (pi: ExtensionAPI) {
 							container.addChild(new Text(theme.fg("muted", "Verdict:"), 0, 0));
 							container.addChild(new Markdown(finalOutput.trim(), 0, 0, mdTheme));
 						}
-						if (toolCalls.length > 0) {
-							container.addChild(new Text(theme.fg("muted", "Activity:"), 0, 0));
-							const activity = renderActivityTree(r);
+						const commandActivity = isCommandStage(r) ? renderCommandActions(r, 0) : "";
+						if (toolCalls.length > 0 || commandActivity) {
+							container.addChild(new Text(theme.fg("muted", commandActivity ? "Checks:" : "Activity:"), 0, 0));
+							const activity = commandActivity || renderActivityTree(r);
 							if (activity) container.addChild(new Text(activity, 0, 0));
 						}
 						if (!finalOutput && displayItems.length === 0) {
@@ -3285,8 +3337,10 @@ export default function (pi: ExtensionAPI) {
 					const timing = getAgentTiming(r);
 					text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)}${r.workType ? theme.fg("warning", ` · ${r.workType}`) : ""} ${rIcon}`;
 					if (timing) text += ` ${theme.fg("dim", timing.label)}`;
+					const commandLines = isCommandStage(r) ? renderCommandActions(r, 5) : "";
 					if (displayItems.length === 0)
 						text += `\n${theme.fg("muted", r.exitCode === -1 ? "(running...)" : "(no output)")}`;
+					else if (commandLines) text += `\n${commandLines}`;
 					else text += `\n${renderDisplayItems(displayItems, 5, getNestedRunMap(r))}`;
 				}
 				if (!isRunning) {

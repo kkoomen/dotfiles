@@ -1,12 +1,53 @@
 ---
 name: commit-agent
-description: Creates the focused commit or commits the selected route allows after every stage required by the route has passed.
+description: Creates the focused commit the selected route allows after every stage required by the route has passed. Mechanical, no model.
 handoff: true
-thinking: low
-tools: read, bash
+thinking: off
+command: /Users/koomen/.pi/agent/bin/commit-gate
 ---
 
-# Commit Agent
+# Commit Agent (mechanical stage)
+
+This stage is **not a model**. `command:` makes the launcher run `~/.pi/agent/bin/commit-gate` with
+`bash -c` inside the dispatch `cwd`; the script prints the handoff JSON itself and the launcher
+records it exactly like a model stage.
+
+## Why it is mechanical
+
+The message is written by `build-agent`, which already holds the context and the reason, and is
+carried in its handoff as `commit: {subject, bullets, files}`. What remained for this stage was
+git plumbing plus assertions — 1,235 dispatches and 9,749 model turns in the measured history to
+stage files and run `git commit`. The assertions are now code, and they are stricter than the
+model's were:
+
+- the route's required stages are present with their success statuses, and the formatter record's
+  snapshot matches `expectedSnapshot`;
+- the changed set is exactly the reviewed file set — unreviewed content is refused;
+- the message matches that tree (`commit.files` must cover the change), which is what catches a
+  message written before a later repair;
+- the message stays general: a bullet naming a path, an extension, a symbol, or a line range is
+  rejected;
+- the staged diff is scanned for secrets, environment files, task artifacts, and debug leftovers;
+- only explicit in-scope paths are staged; generated artifacts a repository hook rewrites (such as
+  the git-cliff `CHANGELOG.md`) are left to the hook.
+
+## Message contract (produced by `build-agent`)
+
+```json
+"commit": {
+  "subject": "fix(frame): dismiss IME when the setup overlay loses focus",
+  "bullets": [
+    "Keep the setup root mounted across focus and visibility changes",
+    "Route IME dismissal through the shared overlay controller"
+  ],
+  "files": ["apps/frame-android/src/main/java/.../FrameRoot.kt"]
+}
+```
+
+`subject` is `type(scope): outcome`, at most 50 characters, no trailing period. `bullets` are 1–4
+general statements, required whenever the tree touches more than one file. `files` is the staleness
+guard. When the builder supplies no message, the gate composes one from the task id and the areas
+touched, and records that as a deviation.
 
 ## Scope
 
@@ -15,9 +56,9 @@ Verify release readiness, stage only the assigned task, and create the focused c
 ## Required Context
 
 - Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
-- Read the repository's root `AGENTS.md`, the dispatch task text, selected work type and route, required stage results, current status, full diff, and recent commit history.
-- Use the repository's commit-message convention. When none exists, use Conventional Commits in the form `type(scope): description` or `type: description`.
-- Confirm the exact files belonging to the assigned task before staging. Treat pre-existing and unrelated working-tree changes as user-owned.
+- Read `HANDOFF.md` for the readiness table, and the repository's root `AGENTS.md` for commit conventions, signing, hooks, and authorship.
+- The script, not this document, holds the readiness gate, the message lint, the scope check, and the hygiene scan. Read it before changing behaviour here.
+- Pre-existing and unrelated working-tree changes are user-owned: they are never staged, and the gate refuses a tree whose changed set is wider than the reviewed set.
 
 ## Readiness Gate
 
@@ -32,13 +73,13 @@ Verify release readiness, stage only the assigned task, and create the focused c
 ## Commit Rules
 
 - Stage explicit in-scope paths; do not use broad staging when unrelated changes exist.
-- Write a concise subject that states the outcome. Add a body only when the reason, migration, risk, or non-obvious trade-off needs explanation.
+- Write no message here. The message arrives from `build-agent`'s `commit` field (see *Message contract* above); this stage validates it and refuses a stale or over-specific one.
 - Follow repository rules for generated files, issue references, signing, hooks, and authorship. Do not hand-edit `CHANGELOG.md`: the git-cliff pre-commit hook regenerates it from commit messages and stages it automatically.
 - Report the final commit hash, exact subject, and any in-scope file intentionally left uncommitted.
 
 ## Worktree Commit Modes
 
-Every orchestrator dispatch commits inside a worktree, so `worktreePath` and `baseCommit` are always present.
+Every orchestrator dispatch commits inside a worktree, so `worktreePath` and `baseCommit` are always present. `commit-gate` enforces the branch name, the base, and the single-commit rule below: a mismatch is a `FAIL` or `BLOCKED`, never something the stage works around.
 
 ### Single-Route Worktree Mode
 

@@ -11,7 +11,7 @@ A wave is a **worker pool**, not a stage pipeline and not a fixed batch. Each ro
 - `itemId` must be a valid Git ref component and unique inside the wave. Namespace it by track when two tracks can produce the same file name — `server/01-handler-guards`, never a bare `01-handler-guards` — because it becomes both a branch name and a wave-state key.
 - Pass `cwd` on every wave dispatch, equal to that stage's `worktreePath`. The contract field tells the agent where to work; the launcher's `cwd` argument is what snapshots, review digests, check-log paths, and the process working directory actually use. Never set one without the other.
 - Never resolve a conflict, never amend, and never merge content on an item's behalf. The history operations you perform are the serialized cherry-pick of an already-reviewed item commit onto the wave branch, and the post-assembly follow-up cherry-picks of the Follow-up Route. A cherry-pick conflict stops that cherry-pick and opens the Follow-up Route.
-- Post-assembly gate re-runs are dispatched to `test-agent` as verification-only runs, or to `build-agent` when content must change; never executed by the orchestrator.
+- Post-assembly gate re-runs are dispatched to `test-gate-agent` (a command stage, no model) or to `build-agent` when content must change; never executed by the orchestrator itself.
 - Snapshots are per scope: an item's worktree snapshot guards only that item's stages; the assembled tree's snapshot guards the final gates. Never compare a worktree snapshot to an assembled-tree record.
 - If the repository does not ignore `.pi/worktrees/`, place worktrees outside the repo and record that path.
 ## Rounds
@@ -42,11 +42,13 @@ Each `item-runner-agent` owns its item's whole chain, dispatched serially inside
 
 ```
 architect-large-agent   validate the item's existing plan      workType: large
+plan-lint-agent         command: plan shape is verifiable       workType: wave
 build-agent             implement + item tests + delta gate     workType: wave
-document-agent          only when triggered                      workType: wave
-formatter-agent         mechanical formatting and lint          workType: wave
+doc-trigger-agent       command: is documentation owed?         workType: wave
+document-agent          only when doc-trigger says applicable   workType: wave
+formatter-agent         command: mechanical-gate                workType: wave
 code-review-agent       item scope, working tree vs baseCommit  workType: wave
-commit-agent            one commit on item/<itemId>             workType: wave
+commit-agent            command: commit-gate, one commit        workType: wave
 ```
 
 `item-runner-agent.md` owns the per-stage rules, the repair loop, and its handoff. From here the invariants are:
@@ -54,9 +56,10 @@ commit-agent            one commit on item/<itemId>             workType: wave
 - **Serial inside a worker.** Stages run one at a time because each consumes the previous one's output. Parallelism comes from the other workers, never from a worker's own stages.
 - **Same taskId, same cwd.** Every stage the worker dispatches carries the wave `taskId` and `cwd` = its worktree, or the launcher rejects its records and resolves its snapshots against the wrong tree.
 - **No history.** The worker commits through `commit-agent` and returns the hash; it never cherry-picks, merges, or amends, and never writes state.
-- **Repair stays inside the worktree.** A review or gate failure returns to build, then re-runs formatter and review, capped at three failed rounds before the orchestrator quarantines the item.
+- **Repair stays inside the worktree, and resumes the stage's session.** A review or gate failure returns to build, then re-runs formatter and review, capped at three failed rounds before the orchestrator quarantines the item. **Every repair dispatch carries `contract.repairOf`** = the failed record's absolute path, so the launcher resumes that stage's own session; without it a repair is a cold restart that re-reads the tree, which measured as the largest source of wasted spend in this system.
+- **A failed review never re-plans the item.** Repair the code against the existing plan; only `plan-lint` refusing the same plan twice, or a changed user decision, re-opens it.
 - **`documentRequired` is always explicit.** The commit dispatch sets it `true` when the document stage ran and `false` when the item was checked and has no documentation trigger, because the launcher treats an absent value as `true`.
-- **No per-item `test-agent`.** A wave item is classified as a large feature, but its independent test stage is deliberately replaced by the per-workspace verification-only suite on the assembled head: the same surface, once per workspace instead of once per item. An item that genuinely needs a test-design pass must say so in its plan; do not add the stage back per item.
+- **No per-item test stage.** A wave item is classified as a large feature, but its independent test stage is deliberately replaced by the per-workspace suite on the assembled head: the same surface, once per workspace instead of once per item. That gate is `test-gate-agent`, a command stage. An item that genuinely needs a test-design pass must say so in its plan; do not add the stage back per item.
 - **Worker independence.** A worker that fails returns immediately and frees the next round's capacity; the scheduler never waits for it and never shrinks N because one item is slow.
 
 ## Assembly
@@ -70,9 +73,9 @@ commit-agent            one commit on item/<itemId>             workType: wave
 
 Run only when the queue is drained and no round is in flight.
 
-- **Per-workspace suite.** One `test-agent` per workspace, not per item, on the assembled head with `cwd` set to the assembly worktree, verification-only: it may not add or change tests and may not fix production code. Compare against the per-workspace baseline recorded on `<waveBase>`; new failures fail the run, pre-existing failures are the zero point and are recorded, not fixed. The owner of a failure is the item whose recorded blast radius contains the failing test file or the paths it exercises; a failure no item owns returns to `wave-planner-agent`.
+- **Per-workspace suite.** One `test-gate-agent` run per workspace, not per item, on the assembled head with `cwd` set to the assembly worktree. It is a command stage: it runs the suites and reports, it cannot add or change tests or fix production code. Compare against the per-workspace baseline recorded on `<waveBase>`; new failures fail the run, pre-existing failures are the zero point and are recorded, not fixed. The owner of a failure is the item whose recorded blast radius contains the failing test file or the paths it exercises; a failure no item owns returns to `wave-planner-agent`.
 - **Integration review.** `integration-review-agent` reviews cross-item surfaces only, with `cwd` set to the assembly worktree, and records the assembled `treeHash` with `recordedAt`. It is the last stage that inspects content, and nothing writes after it.
-- **Readiness report.** Verify the evidence and report. It creates no commit, and any gate re-run is dispatched to `test-agent` as verification-only, or to `build-agent` when content must change.
+- **Readiness report.** Verify the evidence and report. It creates no commit, and any gate re-run is dispatched to `test-gate-agent`, or to `build-agent` when content must change.
 
 ## Follow-up Route (post-assembly)
 
@@ -102,7 +105,7 @@ A wave owns every worktree it creates and removes all of them before the run is 
 
 Cluster failures by root cause before dispatching any repair. One dispatch per root cause, not one per failing check.
 
-- Wrong or missing test: `test-agent` while the item is pre-commit, or the Follow-up Route after assembly, where `build-agent` repairs and `commit-agent` lands it.
+- Wrong or missing test: `test-gate-agent` reports it while the item is pre-commit (the repair is `build-agent`'s, which owns test code), or the Follow-up Route after assembly, where `build-agent` repairs and `commit-agent` lands it.
 - Production defect: `build-agent` for the owning item.
 - Sibling breakage after assembly: `build-agent` for the item the integration review names as owner. A finding with no identifiable owner returns to `wave-planner-agent`.
 - Assembled-tree test failure: use the ownership rule in *Final gates* rather than waiting for the integration review.
@@ -126,7 +129,7 @@ The Plan Confirmation Gate is asked **once per run, for the scope**, not once pe
 
 Pre-commit repairs stay inside the owning item's worktree. After a repair to item A before its commit, re-run A's own gate, its delta gate, its formatter pass, its document pass when the repair changes documented behavior, and its review, then commit. Nothing outside that worktree is invalidated, because document and formatter writes happen before review inside the worktree.
 
-A post-assembly repair that touches an item's files requires that item's review to be re-run in the follow-up worktree, and the integration review to be re-run. Dispatch the affected gate to `test-agent` as a verification-only run or to `build-agent` when content must change; never execute a gate yourself. A post-assembly change to an already-committed item goes through the Follow-up Route as one follow-up commit and never rewrites history. No stage may write on the assembled tree after the integration review; only a follow-up worktree is writable.
+A post-assembly repair that touches an item's files requires that item's review to be re-run in the follow-up worktree, and the integration review to be re-run. Dispatch the affected gate to `test-gate-agent` or to `build-agent` when content must change; never execute a gate yourself. A post-assembly change to an already-committed item goes through the Follow-up Route as one follow-up commit and never rewrites history. No stage may write on the assembled tree after the integration review; only a follow-up worktree is writable.
 
 The readiness report is blocked until a current `INTEGRATION_PASS` record exists for the final `treeHash`. Item commits and cherry-picks preserve content and do not invalidate it; a follow-up commit changes content and does. State the cascade in wave state so a later stage can see which evidence is stale.
 
@@ -135,7 +138,7 @@ The readiness report is blocked until a current `INTEGRATION_PASS` record exists
 - Do not cap, split, or refuse a wave because the roadmap is large. `N` bounds one round; it never bounds scope.
 - Do not dispatch workers one at a time, poll a running round for partial results, or start a round while another is in flight.
 - Do not resolve a cherry-pick conflict yourself except for the mechanical mandatory-shared-artifact resolution defined in *Assembly*; never amend a commit, never reorder assembly by a precomputed merge order, and send every other conflict to the Follow-up Route for the owning `build-agent`.
-- Do not execute a post-assembly gate yourself; dispatch it to `test-agent` or `build-agent`.
+- Do not execute a post-assembly gate yourself; dispatch it to `test-gate-agent` or `build-agent`.
 - Do not let any stage write on the assembled tree after the integration review.
 - Do not quarantine an item after its commit is assembled, and do not revert committed content.
 - Do not start an item whose `contract` producer is unassembled, whose paths collide with an item already admitted to its round, or whose single mutable verification resource is already held.

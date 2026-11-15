@@ -51,4 +51,5 @@ The orchestrator must pass `workType: normal`. This agent is not used for small 
 - Every proposed change has a named purpose, owner file or boundary, and validation method.
 - Test cases protect observable behavior and meaningful failure paths rather than implementation details.
 - Security, privacy, accessibility, migration, compatibility, configuration, and documentation implications are explicitly addressed or marked not applicable with a reason.
+- When the plan touches documentation, name the page and the general concept it should explain. Never plan to copy implementation detail (file inventories, symbol names, wiring, config values) into `docs/`; those pages are onboarding overviews built from headings, tables, bullets, and short paragraphs.
 - The response is concise and makes no repository edits.

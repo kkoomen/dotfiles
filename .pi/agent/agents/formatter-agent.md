@@ -28,7 +28,10 @@ fix belongs anyway.
 
 Discovery, in order:
 
-1. `<worktree>/.pi/mechanical.json` — `{"write": ["pnpm format"], "check": ["pnpm lint"]}`.
+1. Repository gate configuration, resolved by `bin/gate-config` — normally
+   `<git-common-dir>/pi-gate.json`, which every worktree shares and Git never shows to a teammate.
+   `{"write": ["pnpm format"], "check": ["pnpm lint"]}`; a check entry may be
+   `{"command": "...", "wholeRepo": true, "optional": true}`.
 2. `package.json` scripts: `format` as a write step; `format:check`, `lint`, `typecheck`,
    `types:check` as check steps; `npx --no-install tsc --noEmit` when only a `tsconfig.json`
    exists. The package manager is detected from the lockfile.

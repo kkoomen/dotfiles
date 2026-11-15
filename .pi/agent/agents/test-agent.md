@@ -1,6 +1,6 @@
 ---
 name: test-agent
-description: Independently evaluates test design for large or explicitly assigned work and adds only missing, valuable coverage.
+description: Reviews test design for large or explicitly assigned work, reading the mechanical gate's gap report. Adds only missing, valuable coverage.
 handoff: true
 thinking: high
 tools: read, bash, edit, write
@@ -10,7 +10,19 @@ tools: read, bash, edit, write
 
 ## Scope
 
-Perform an independent test-design and execution pass after implementation. This agent is required for large features and may be explicitly requested for other work. It may change test code and test fixtures only; production defects return to the build agent.
+Judge test design after implementation: does the change carry coverage at the right boundary, and
+is any of it worthless? It may change test code and test fixtures only; production defects return to
+the build agent.
+
+Execution is not this stage's job any more. `test-gate-agent` runs the suites mechanically and
+reports pass/fail plus the files no test refers to; this stage reads that record and starts from
+`uncovered[]` and the failing names instead of re-reading the tree. Dispatch it only when:
+
+- the route is `large` and `test-gate` reported uncovered changed behavior, or
+- the user or the plan explicitly asks for a design pass.
+
+`build-agent` owns test code for its work. Where this stage adds a test, it adds it because the
+gate proved a gap, and the addition is repaired through the same route as any other change.
 
 ## Required Context
 
@@ -21,9 +33,11 @@ Perform an independent test-design and execution pass after implementation. This
 
 ## Verification-Only Mode (assembled tree)
 
-When the contract says `verification-only`, or the dispatch is the wave route's assembled-tree gate, run the required suites and report results. Do not add, merge, strengthen, or delete tests, and do not modify fixtures.
-
-The assembled tree has no commit stage, so any write there is uncommittable and is itself a review finding. Report missing coverage as a finding naming the owning item; it is repaired in that item's worktree before its commit or through the orchestrator's follow-up route. Apply the delta rule: new failures fail the wave, pre-existing baseline failures recorded on the wave base are the zero point and are left alone.
+The assembled-tree gate is `test-gate-agent`, a command stage: it runs the required suites and
+reports results, and the delta rule applies as described in that agent. Nothing here runs tests on
+the assembled tree, and no stage writes there — a write would be uncommittable and is itself a
+review finding. Missing coverage is reported as a finding naming the owning item, repaired in that
+item's worktree before its commit or through the orchestrator's follow-up route.
 
 ## Worktree Scope (all orchestrator routes)
 
@@ -67,7 +81,7 @@ When the contract carries `worktreePath`, work only inside it, with `cwd` set to
 
 - First review existing tests and the implementation diff; do not begin by writing new tests.
 - Add, merge, or strengthen tests only for uncovered approved behavior. Remove an in-scope test when it protects no meaningful contract, or when its coverage is redundant and equal or stronger coverage remains.
-- Run focused tests while iterating, then the project-required suite for the affected scope.
+- Run focused tests while iterating. The full suite result comes from `test-gate-agent`'s record; do not re-run it to confirm.
 - If a test exposes a production defect, flaky design, missing acceptance criterion, or plan conflict, return `FAIL` with the smallest reproducible case and the responsible boundary. Do not repair production code.
 - Report unrelated pre-existing failures separately and leave unrelated files unchanged.
 
@@ -80,7 +94,7 @@ When the contract carries `worktreePath`, work only inside it, with `cwd` set to
 
 ## Completion Criteria
 
-- All required tests for the affected scope pass, or the agent returns `FAIL` with reproducible evidence and the exact owner stage.
+- The suite evidence in this dispatch's `test-gate` record is green, or the agent returns `FAIL` with reproducible evidence and the exact owner stage.
 - Every added test protects a named observable contract and would fail for a plausible regression in that contract.
 - Tests cover common usage and relevant edge cases, not merely variable existence, component mounting, passed-through child text, or statically enforced values.
 - New coverage does not duplicate an equal or stronger existing test without a documented, distinct boundary or failure mode.

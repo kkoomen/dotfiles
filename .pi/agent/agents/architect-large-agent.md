@@ -2,7 +2,7 @@
 name: architect-large-agent
 description: Interviews unresolved user-owned decisions and produces detailed roadmap plans for large features.
 handoff: true
-thinking: high
+thinking: max
 tools: read, bash, edit
 ---
 
@@ -54,4 +54,5 @@ The orchestrator must pass `workType: large` for a single-item route. The archit
 - Every proposed change has a named purpose, owner file or boundary, and validation method.
 - Test cases protect observable behavior and meaningful failure paths rather than implementation details.
 - Security, privacy, accessibility, migration, compatibility, configuration, and documentation implications are explicitly addressed or marked not applicable with a reason.
+- When the plan touches documentation, name the page and the general concept it should explain. Never plan to copy implementation detail (file inventories, symbol names, wiring, config values) into `docs/`; those pages are onboarding overviews built from headings, tables, bullets, and short paragraphs.
 - No user-owned decision remains unresolved. The roadmap file contains one current, detailed `# Plan` section; the final handoff references that file and requirement IDs without repeating the full plan.

@@ -66,6 +66,34 @@ When the contract carries `worktreePath`, that path is the whole assignment. Tha
 - Do not weaken assertions, validation, authorization, types, lint rules, or error handling merely to make checks pass.
 - Do not overwrite, revert, format, or stage unrelated user changes.
 
+## Commit Message (part of your handoff)
+
+`commit-agent` is a command stage and writes no prose. It takes the message from your handoff, so
+emit it while you still hold the reason for the change:
+
+```json
+"commit": {
+  "subject": "fix(frame): dismiss IME when the setup overlay loses focus",
+  "bullets": [
+    "Keep the setup root mounted across focus and visibility changes",
+    "Route IME dismissal through the shared overlay controller"
+  ],
+  "files": ["apps/frame-android/src/main/java/.../FrameRoot.kt"]
+}
+```
+
+- `subject` is `type(scope): outcome` — imperative, at most 50 characters, no trailing period.
+- `bullets` are 1–4 statements of **what changed and why**, in general terms. A bullet that names a
+  path, an extension, a symbol, or a line range is rejected by the commit gate; that detail belongs
+  in the diff.
+- `files` lists the paths this message describes. It is the staleness guard: if a later repair
+  changes that set, the gate refuses the stale message rather than shipping it. Re-emit the field
+  with the final set.
+- Emit the field on your **last** dispatch for the item, not the first: a message written before a
+  review repair describes a tree that no longer exists.
+- Documentation paths are excluded: the gate appends its own documentation bullet, because
+  `document-agent` writes after you.
+
 ## Completion Criteria
 
 - Return `PASS` with the implementation and validation handoff only when every completion criterion is satisfied. Otherwise return `FAIL`, `REPLAN_REQUIRED`, or `RECLASSIFY` with the exact blocker and owner.

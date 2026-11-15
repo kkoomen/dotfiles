@@ -24,6 +24,8 @@ import os from "node:os";
 import {
 	exitCodeOf,
 	checksOfHandoff,
+	checkActionLines,
+	isCommandStage,
 	formatStageAction,
 	oneLine,
 	getDisplayItems,
@@ -580,5 +582,27 @@ describe("command stage checks", () => {
 			"$ npm run typecheck (exit code 0)",
 			"$ npx prettier --check src (exit code 1)",
 		]);
+	});
+
+	test("a command stage shows its checks where other agents show their trace", () => {
+		const checks = [1, 2, 3, 4, 5, 6].map((n) => ({ command: `cmd ${n}`, exitCode: n % 2 }));
+		expect(checkActionLines(checks, plain)).toEqual([
+			"... 2 earlier",
+			"$ cmd 3 (exit code 1)",
+			"$ cmd 4 (exit code 0)",
+			"$ cmd 5 (exit code 1)",
+			"$ cmd 6 (exit code 0)",
+		]);
+	});
+
+	test("a stage with no checks has no actions and no rows", () => {
+		expect(checkActionLines(undefined, plain)).toEqual([]);
+		expect(checkActionLines([], plain)).toEqual([]);
+	});
+
+	test("only a command stage is identified by its model", () => {
+		expect(isCommandStage({ model: "command" })).toBe(true);
+		expect(isCommandStage({ model: "claude-sonnet-4" })).toBe(false);
+		expect(isCommandStage(undefined)).toBe(false);
 	});
 });
