@@ -143,13 +143,68 @@ export function semanticFailure(text) {
 export function validateContract(contract) {
   if (!contract || !/^[\w.-]+$/.test(contract.taskId ?? ''))
     return 'Missing or invalid contract.taskId'
-  if (!Array.isArray(contract.requirements) || contract.requirements.length === 0)
+  const requirements = normaliseRequirements(contract.requirements)
+  if (!requirements || requirements.length === 0)
     return 'Assign at least one requirement ID'
-  if (contract.requirements.some((id) => !/^R\d+(?:\.\d+)*$/.test(id)))
+  if (requirements.some((entry) => !/^R\d+(?:\.\d+)*$/.test(entry.id)))
     return 'Requirement IDs must be R1, R2, R1.1, etc.'
-  if (new Set(contract.requirements).size !== contract.requirements.length)
+  const ids = requirements.map((entry) => entry.id)
+  if (new Set(ids).size !== ids.length)
     return 'Duplicate assigned requirement ID'
   return null
+}
+
+/**
+ * Requirement contracts carry meaning and ownership: `{ id, text, owner }`.
+ *
+ * Ledgers and older dispatches still carry bare ids. They are normalised here on read, never
+ * migrated, so an in-flight route keeps working unchanged. Returns null for a shape that is not a
+ * requirement at all, so a malformed contract fails by name instead of being guessed at.
+ */
+export function normaliseRequirements(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  const out = []
+  for (const entry of raw) {
+    if (typeof entry === 'string' && entry.trim()) {
+      out.push({ id: entry.trim() })
+      continue
+    }
+    if (entry && typeof entry === 'object' && typeof entry.id === 'string' && entry.id.trim()) {
+      out.push({
+        id: entry.id.trim(),
+        ...(typeof entry.text === 'string' && entry.text.trim() ? { text: entry.text.trim() } : {}),
+        ...(typeof entry.owner === 'string' && entry.owner.trim() ? { owner: entry.owner.trim() } : {}),
+      })
+      continue
+    }
+    return null
+  }
+  return out
+}
+
+const STAGE_ALIASES = {
+  architect: 'architect-agent',
+  'architect-large': 'architect-large-agent',
+  'plan-lint': 'plan-lint-agent',
+  'memory-lint': 'memory-lint-agent',
+  build: 'build-agent',
+  test: 'test-agent',
+  'test-gate': 'test-gate-agent',
+  'doc-trigger': 'doc-trigger-agent',
+  document: 'document-agent',
+  formatter: 'formatter-agent',
+  review: 'code-review-agent',
+  commit: 'commit-agent',
+}
+
+/** True when `owner` names `agentName`, as an agent name or its stage alias. */
+export function ownerMatchesAgent(owner, agentName) {
+  if (typeof owner !== 'string' || !owner.trim()) return false
+  const named = owner.trim().toLowerCase()
+  const agent = String(agentName || '').toLowerCase()
+  if (named === agent) return true
+  if (named === agent.replace(/-agent$/, '')) return true
+  return STAGE_ALIASES[named] === agent
 }
 
 /** Validate shape and completeness, not the truth of an agent's claims. */
@@ -185,11 +240,14 @@ export function validateReport(text, contract, agentName) {
   }
   if (report.unresolved.length) return 'Success handoff contains unresolved blocking work'
   if (report.files.some((file) => typeof file !== 'string')) return 'files must contain paths'
+  const assigned = normaliseRequirements(contract.requirements) ?? []
+  const assignedIds = assigned.map((entry) => entry.id)
+  const ownerById = new Map(assigned.map((entry) => [entry.id, entry.owner]))
   const ids = report.requirements.map((item) => item?.id)
   if (
     new Set(ids).size !== ids.length ||
-    ids.length !== contract.requirements.length ||
-    contract.requirements.some((id) => !ids.includes(id))
+    ids.length !== assignedIds.length ||
+    assignedIds.some((id) => !ids.includes(id))
   ) {
     return 'Missing, extra, or duplicate requirement coverage; reconcile the assignment before continuing'
   }
@@ -201,7 +259,13 @@ export function validateReport(text, contract, agentName) {
         ? ['verified', 'not_applicable']
         : ['verified']
   for (const requirement of report.requirements) {
-    if (!states.includes(requirement.state))
+    // A requirement that names another owner is legitimately out of this stage's scope: it reports
+    // `not_applicable` with a reason instead of claiming `verified` or `implemented`. When no owner
+    // is named, the per-agent state rules above stand unchanged.
+    const owner = ownerById.get(requirement.id)
+    const nonOwning = typeof owner === 'string' && owner.trim() && !ownerMatchesAgent(owner, agentName)
+    const allowed = nonOwning ? [...states, 'not_applicable'] : states
+    if (!allowed.includes(requirement.state))
       return `Unfinished or invalid state for ${requirement.id}`
     if (
       !Array.isArray(requirement.evidence) ||
@@ -264,6 +328,19 @@ export function validateReport(text, contract, agentName) {
   return null
 }
 
+/**
+ * True for a path inside the repository-root `.pi/` directory.
+ *
+ * That directory is local agent state — project memory (`.pi/memory.md`), route state, check logs,
+ * worktrees, caches — and never repository content. It must not enter a snapshot, or a memory write
+ * during a route looks like a code change and invalidates a review that examined nothing new. Only
+ * the root `.pi/`; a `.pi/` inside a package is ordinary project content.
+ *
+ * Deliberately kept local instead of imported from `bin/lib/gate.mjs`: this module is loaded by the
+ * extension host and cannot depend on the gate CLI's module graph.
+ */
+const isLocalStatePath = (file) => /^\.pi\//.test(String(file ?? '').replace(/^\.\//, '').replace(/\\/g, '/'))
+
 /** Hash HEAD, index, worktree diff and untracked contents without exposing code. */
 export function codeSnapshot(cwd) {
   const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
@@ -291,6 +368,7 @@ export function codeSnapshot(cwd) {
     .toString()
     .split('\0')
     .filter(Boolean)
+    .filter((file) => !isLocalStatePath(file))
     .sort()
   for (const file of untracked) {
     const fullPath = path.resolve(root, file)
@@ -424,7 +502,7 @@ export function reviewSnapshot(cwd) {
     ...git('ls-files', '--others', '--exclude-standard', '-z').split('\0'),
   ])
   const hash = createHash('sha256').update(git('rev-parse', 'HEAD'))
-  for (const name of [...names].filter((name) => name && !name.endsWith('.md')).sort()) {
+  for (const name of [...names].filter((name) => name && !name.endsWith('.md') && !isLocalStatePath(name)).sort()) {
     hash
       .update(name)
       .update('\0')

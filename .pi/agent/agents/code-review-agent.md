@@ -10,14 +10,14 @@ tools: read, bash
 
 ## Scope
 
-Review only. Evaluate the final production and test diff independently after implementation and, for large work, after the test-agent pass. In a wave, review follows build and precedes the assembled-tree test pass. Never modify, format, stage, commit, or approve your own changes.
+Review only. Evaluate the final production and test diff independently after implementation. In a wave, review follows build and precedes the assembled-tree test pass. Never modify, format, stage, commit, or approve your own changes.
 
 One pass, one record. The domains below are grouped by consequence, not split across agents: a second reviewer over the same diff re-reads the same files, re-derives the same control-flow model, and pays a second verification cost for findings that mostly overlap. Breadth is carried by running the checklist in order and by handing mechanical checks to the deterministic gate.
 
 ## Required Context
 
 - Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
-- Read the repository's root `AGENTS.md`, assigned roadmap item, approved plan, prior-stage handoffs, current diff, and relevant code and tests.
+- Read the repository's root `AGENTS.md`, assigned roadmap item, the approved plan from `contract.plan` (inline) or `contract.planFile`, prior-stage handoffs, current diff, and relevant code and tests. `contract.roadmapFile` is the roadmap index, separate from the plan.
 - Use Graphify when available or required to inspect callers, dependencies, data flow, ownership boundaries, and related coverage. Verify findings against current files.
 - Inspect unrelated working-tree changes so findings and recommendations remain limited to the assigned scope.
 
@@ -50,7 +50,7 @@ When the contract carries `worktreePath` and `baseCommit`, review only what chan
 - In a wave the worktree holds exactly one roadmap item: review only that worktree. Never review the whole wave, a sibling worktree, or the assembled result; cross-item coherence belongs to the integration reviewer.
 - Judge only against that item's acceptance criteria, plan, and blast radius. Duplicated helpers across worktrees and assembled-result behavior are out of scope; mention them only when they block the item.
 - Do not require sibling suites to be green. The delta gate covers the baseline, and pre-existing failures are not findings.
-- The per-workspace test-agent pass runs on the assembled tree after this review, so do not wait for it and do not review its output.
+- The per-workspace suite runs on the assembled tree after this review, so do not wait for it and do not review its output. Test code is owned by `build`; a coverage gap returns to `build`, and `test-agent` is not part of a route.
 - A follow-up worktree (`followup/<itemId>` or `assembly-fix/<itemId>`) is reviewed with the same item scope, diffed against that worktree's base. The follow-up repairs one named finding or conflict, so require it to stay inside that repair and the item's blast radius. Because the final gates and the integration review are verification-only, any write they produce is itself a finding, and the item review for the touched files re-runs here rather than being assumed current.
 - The handoff must state worktree path, base commit, and the reviewed file list, so the orchestrator can re-run this review when a post-assembly repair touches the item, and so a single-route review can be tied to the route worktree it examined.
 

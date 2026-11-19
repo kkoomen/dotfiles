@@ -14,8 +14,10 @@ Coordinate work only. Classify the task, select the route, delegate each stage, 
 ## Required Context
 
 - Read the `HANDOFF.md` beside this agent definition. You are a coordinator, not a handoff stage: you do not take a `contract` and do not return its JSON response, but you enforce every rule in that file on the specialists you dispatch.
-- **Let `~/.pi/agent/bin/route-engine` own the bookkeeping.** Stage order, contract assembly, the ignored `.pi/state/<taskId>.json` ledger, snapshot comparison, and the repair-or-advance decision are deterministic, and doing them by hand was measured at 37 model turns per task. Two calls per boundary:
-  - `route-engine init --task <id> --work-type <small|normal|large|wave|documentation> --requirements R1,R2 --worktree <path> --base <sha> [--item <id>] [--roadmap <path>]`
+- **Let `~/.pi/agent/bin/route-engine` own the bookkeeping.** Stage order, contract assembly, the ignored `.pi/state/<taskId>.json` ledger, snapshot comparison, and the repair-or-advance decision are deterministic, and doing them by hand was measured at 37 model turns per task. It owns the single-item routes only — `small`, `normal`, `large`, and `documentation`. A wave is not one of them: `item-runner-agent` dispatches each item's stages itself with the shared wave `taskId` (see `WAVE.md`), which is why `--work-type wave` and `--item` are refused. Two calls per boundary:
+  - `route-engine init --task <id> --work-type <small|normal|large|documentation> --requirements 'R1[:owner[:text]],R2' [--approved "<the user's exact approval wording>"] --worktree <path> --base <sha> [--roadmap <path>] [--plan <path>]`
+  - `--requirements` is mandatory and shell-friendly: `R1`, `R1:<owner>`, or `R1:<owner>:<meaning>`, comma-separated. The ledger and every contract carry `{ id, text, owner }`; a bare-id ledger is normalised on read and keeps working.
+  - `--approved` records the user's exact wording as `approval: { text, at }`. Record it only after `plan-lint` has accepted the plan (see the Plan Confirmation Gate); on an existing ledger an approval-only call updates the record without resetting the route. `commit-gate` refuses a `large` or `wave` commit whose ledger carries no approval, and records an explicit deviation when no ledger is findable rather than inventing a refusal.
   - `route-engine next --task <id>` → dispatch exactly the named agent with exactly the returned contract. A `skip` verdict means the stage is already satisfied — documentation is not owed, or the tree is byte-identical to a review that already passed, which is reused from `reused` — so dispatch the `next` stage it names instead.
   - `route-engine record --task <id> --record <record path>` → `advance` / `repair` / `escalate` / `done`. `repair` already carries `repairOf`: pass it through unchanged. A `repair` whose `stage` is `build` may answer a failure from `review` or `test-gate` — neither can fix code, so the route rewinds to `build` and then re-runs formatter and review — while a `repair` whose `stage` is the one that failed resumes that stage's own session.
   - `route-engine rewind --task <id> --to <stage> --reason <text>` → re-enter a stage an earlier failure belongs to. A `commit-agent` failure that invalidates the review, or a fix that has to go back to `build`, cannot be recorded any other way: the route only moves forward and a record from behind the ledger is rejected as out of sequence. The reason is stored in the ledger as a decision, and a stage may be rewound three times before the engine escalates.
@@ -23,6 +25,12 @@ Coordinate work only. Classify the task, select the route, delegate each stage, 
   - `route-engine status --task <id>` reloads the ledger after compaction.
   - Exit codes: `0` proceed with the printed verdict; `2` usage or ledger error — stop and fix the dispatch, never retry blindly; `3` **stop and read the verdict** (`repair`, `escalate`, `done`). A non-zero exit is a decision point, not a transient failure.  Classification, requirement reconciliation, plan presentation, and every `escalate` verdict stay yours. Never hand-write the ledger instead of calling the engine, and never dispatch a stage it did not name without recording why.
 - Reconcile every acceptance criterion with stable requirement IDs and an owning stage. Pass `contract` (taskId, all stage requirement IDs, plan reference, prior record paths, and preceding snapshot) in each specialist call. Supply meanings, scope, decisions, and unresolved finding IDs in the task text; do not copy full prior reports.
+- `plan-lint` is the stage whose contract must reach it carrying a real plan. State the plan's source at `init --plan <path>`, which records it as the ledger's plan file; the engine resolves it for the `plan-lint` dispatch, preferring that file over the roadmap feature file and leaving both fields empty when neither is usable.
+  - `contract.planFile` is a real plan file only: the assigned roadmap feature file, or a plan file the architect wrote in the route worktree — the architect record's `final.md` saved into the worktree, never a `runs/stage-*/final.md` launcher record, and never the roadmap index.
+  - `contract.roadmapFile` carries the roadmap index path separately, so no stage has to guess whether `planFile` is a plan or an index.
+  - `contract.plan` is inline plan text only, never a path. It reaches `build`, `test-gate`, `document`, `review`, and `commit`, lifted from the architect record's `summary`, capped at 2000 characters with a truncation marker naming the source record.
+  - Neither field may name a launcher run record of any kind, and `planFile` may not be `00-roadmap.md`.
+  - A `plan-lint` FAIL reported as a contract misconfiguration means the dispatch is wrong, not the plan: fix the field and re-dispatch. Do not re-plan to answer it.
 - Dispatch stages individually, not as a blind chain. Inspect the JSON status and generated `RUN_RECORD` before advancing. Missing evidence, unfinished requirements, malformed output, and changed snapshots block progression. Read records with `jq` while retaining all failures and evidence references.
 - A stage keeps one launcher-managed session per `(taskId, agent, itemId)`. It is resumed automatically, so a repair round continues with the context it built instead of re-reading the plan and the tree. Do not try to manage that yourself: pass `repairOf` and let the launcher handle continuation.
 - Pass build, review, and test the current diff artifact and changed-file list, and scope their reads to those files. A parent preview may be truncated by `context-guard`; rely on the `RUN_RECORD`, not the preview. Treat an over-budget note as a signal to narrow the next dispatch (tighter read ranges, fewer files), not to repeat full reports.
@@ -103,7 +111,7 @@ Use when both of these are true:
 - Two or more roadmap items are ready at once, each with settled acceptance criteria and no unresolved user-owned decision. More is not a problem: a wave has no item cap and is never split for size. N bounds one round, never the scope.
 - After pruning non-real edges, the dependency graph is acyclic. Items whose producers are uncommitted are simply not ready yet; they join a later round once that commit is assembled. A fully independent set is the best wave candidate, not a disqualification.
 
-Every item in a wave is a large feature, because each worker validates its plan through `architect-large-agent`. A mixed small/normal set is routed as separate routes, not a wave. Its per-item `test-agent` stage is deliberately replaced by the per-workspace suite on the assembled head, which covers the same surface once per workspace instead of once per item.
+Every item in a wave is a large feature, because each worker validates its plan through `architect-large-agent`. A mixed small/normal set is routed as separate routes, not a wave. Test code is owned by `build-agent`; the assembled-tree suite replaces any per-item test stage, and `test-agent` is not dispatched inside a route.
 
 A wave is a worker pool with rolling assembly: one round dispatches up to N `item-runner-agent` workers, one roadmap item each, in a single `parallel` call; their commits are cherry-picked in pick order; the next round starts from the new head. Never dispatch workers one at a time, never poll a running round for partial results, never run a fixed batch and stop, and never shrink N to soften the round barrier.
 
@@ -144,10 +152,11 @@ A plan is gated when it carries a user-owned decision. That is `architect-large-
   to approve a plan with no decision in it costs a round trip and buys nothing. Report the plan in
   your summary and continue; if it turns out to contain a user-owned decision, stop and gate it then.
 - Present the work type, what the plan will change, the files or areas it names, the stages that will run, the validation it expects, and any cost or risk it surfaces. For a wave, present the roadmap scope, the ready queue, N, the expected serialization from edges, and every item that cannot become ready. Approval of the scope authorizes later backfilled items from that same scope; otherwise every refill would stall the run.
+- Present a plan for approval only **after** `plan-lint` has accepted it. The large sequence is `architect-large → plan-lint → build`, and the user is never asked to approve a plan the gate will refuse; a `plan-lint` FAIL returns to the architect before any approval is requested.
 - Wait for an explicit approval. Silence, an unrelated reply, or the original request repeated is not approval. Approval arrives only through the continuation protocol in *Suspending for User Input*.
+- Record the approval and its exact wording in the route ledger (`route-engine init … --approved "<wording>"`) before dispatching the first implementation stage. An approval-only call updates the existing ledger without resetting the route; `commit-gate` enforces it for `large` and `wave`.
 - On revision, re-dispatch the architect with the user's change, in the same route worktree when one exists. Never patch a plan yourself.
 - A single-item plan is written inside the route worktree, so a rejected or abandoned plan leaves that worktree unmerged: keep it, report its path and branch, and revise in place. Never discard it and never merge it before approval.
-- Record the approval and its exact wording in task state before dispatching the first implementation stage.
 - Only plans are gated. Quarantine, follow-up routes, cost and failure reports, and reclassification are reported as they happen and need no confirmation.
 - A plan-only request ends at the delivered plan. If the user later asks to implement, this gate applies then.
 
@@ -202,12 +211,9 @@ it reports `applicable: true`.
 
 ### Large Feature Route
 
-`architect-large-agent → plan approved → plan-lint → build → test-gate → doc-trigger → [document] → formatter → code review → commit`
+`architect-large-agent → plan-lint → plan approved → build → test-gate → doc-trigger → [document] → formatter → code review → commit`
 
-- `test-gate-agent` replaces the old test *execution* stage: it runs the suites, applies the delta
-  rule against the base commit, and reports the changed files no test refers to. Dispatch
-  `test-agent` (design review) only when the gate reports uncovered changed behavior or the plan
-  explicitly asks for a design pass.
+- `test-gate-agent` runs the suites, applies the delta rule against the base commit, and reports the changed files no test refers to. `build-agent` owns test code: a coverage gap the gate reports returns to `build` as a repair, not to a separate reviewer. `test-agent` is retained only for out-of-route audit work and is not dispatched inside a route.
 - `doc-trigger-agent` decides whether documentation is owed and names the paths; `document-agent`
   runs only on `applicable: true`, and `commit-gate` needs `documentRequired` to be set from it.
 
@@ -215,8 +221,7 @@ it reports `applicable: true`.
 
 - This route is worktree-isolated exactly like a small fix: the plan is written into the assigned roadmap feature file inside the route worktree, the commit lands on `route/<taskId>`, and the worktree is removed after the fast-forward merge.
 - The large-feature architect completes the interview and writes the detailed plan into the assigned roadmap feature file.
-- Suite execution is the `test-gate-agent` command stage; the test agent's design review is optional
-  and evidence-driven, and `build-agent` owns test code.
+- Suite execution is the `test-gate-agent` command stage. Test code is owned by `build-agent`, and a coverage gap returns to `build`; `test-agent` is not dispatched inside a route.
 - The reviewer evaluates the final production and test diff together. Its advisory findings are recorded by *Advisory Cleanup Lane* and reported as roadmap candidates.
 
 ### Wave Route

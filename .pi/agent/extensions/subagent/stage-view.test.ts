@@ -16,6 +16,9 @@
  *
  * Without that symlink the suite fails with `Cannot find module '@earendil-works/pi-ai'`.
  * The link is test scaffolding only: create it for the run, remove it again afterwards.
+ * Bun resolves the importing file's real path, so when `extensions/subagent` is itself a
+ * symlink the link has to sit beside its target (`.pi/agent/node_modules`), not beside the
+ * directory the symlink was created in.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -25,6 +28,10 @@ import {
 	exitCodeOf,
 	checksOfHandoff,
 	checkActionLines,
+	commandActionLines,
+	summaryOfHandoff,
+	stageHasSummary,
+	isFailedResult,
 	isCommandStage,
 	formatStageAction,
 	oneLine,
@@ -41,6 +48,10 @@ import {
 	dispatchedCost,
 	resultCost,
 	stageItems,
+	nestedStageLines,
+	AGENT_STARTING_TEXT,
+	STAGE_STARTING_TEXT,
+	collapsedStageBody,
 	stageShowsActions,
 	stageSpinnerFrame,
 	stageStatus,
@@ -174,6 +185,10 @@ describe("stageActionLines", () => {
 describe("ownTraceLimit", () => {
 	test("a coordinator's own trace uses the stage action window", () => {
 		expect(ownTraceLimit("orchestrator-agent")).toBe(4);
+	});
+
+	test("a diagnostician's own trace uses the same window instead of everything", () => {
+		expect(ownTraceLimit("diagnose-agent")).toBe(4);
 	});
 
 	test("any other directly dispatched agent keeps its ordinary trace", () => {
@@ -337,6 +352,15 @@ describe("stageShowsActions", () => {
 		expect(stageShowsActions(failed)).toBe(false);
 	});
 
+	test("a finished stage whose handoff summary is its answer keeps its rows", () => {
+		// plan-lint reports FAIL at exit 0 with no checks; collapsing its summary would
+		// leave a bare stage line with no reason under it.
+		const failed: StageTiming = { label: "⏱ 0:00", running: false, time: "0:00" };
+		expect(stageShowsActions(failed, "collapsed", true)).toBe(true);
+		// The summary flag is the command stage's, not a general escape from collapsing.
+		expect(stageShowsActions(failed, "collapsed", false)).toBe(false);
+	});
+
 	test("a stage with no timing yet has nothing to show", () => {
 		expect(stageShowsActions(null)).toBe(true);
 	});
@@ -448,6 +472,120 @@ describe("getDisplayItems", () => {
 
 	test("a transcript of only cd calls renders as no items at all", () => {
 		expect(getDisplayItems([message(call("1", "bash", { command: "cd /repo" }))])).toEqual([]);
+	});
+});
+
+describe("a cell before its agent has reported anything", () => {
+	test("a single agent that has said nothing yet says what it is preparing", () => {
+		expect(AGENT_STARTING_TEXT).toBe("Preparing the agent — loading its instructions and the workspace…");
+	});
+
+	test("a stage with no messages yet says it is starting, not that it has no output", () => {
+		expect(collapsedStageBody("", "", true)).toBe("Preparing the stage — agent starting, no actions reported yet…");
+		// One ellipsis character, never three dots: it is one phrase, not a truncated line.
+		expect(STAGE_STARTING_TEXT.includes("...")).toBe(false);
+	});
+
+	test("a finished stage with no output still reads as no output", () => {
+		expect(collapsedStageBody("", "", false)).toBe("(no output)");
+	});
+
+	test("a command stage shows its command lines, never the placeholder", () => {
+		const lines = "$ npm run typecheck (exit code 0)";
+		expect(collapsedStageBody(lines, "", true)).toBe(lines);
+		expect(collapsedStageBody(lines, "", false)).toBe(lines);
+	});
+
+	test("a transcript wins over the placeholder but not over commands", () => {
+		expect(collapsedStageBody("", "Edited a.ts", true)).toBe("Edited a.ts");
+		expect(collapsedStageBody("$ cmd", "Edited a.ts", true)).toBe("$ cmd");
+	});
+
+	test("no cell still paints the bare (running...) placeholder", () => {
+		const source = fs.readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+		expect(source.includes("(running...)")).toBe(false);
+		// A streamed cell is still wired to the per-agent fallback, never to a bare placeholder.
+		expect(source.includes("getFinalOutput(currentResult.messages) || streamingFallback()")).toBe(true);
+		// Both collapsed per-stage views (chain and parallel) decide through the one helper.
+		expect(source.split("collapsedStageBody(").length - 1).toBe(3);
+	});
+});
+
+describe("nested stage lines", () => {
+	/** A nested dispatch: one stage of a coordinator, live or finished. */
+	const run = (over: Record<string, unknown> = {}) => ({
+		toolCallId: "r1",
+		agent: "build-agent",
+		task: "do the thing",
+		startedAt: 1000,
+		...over,
+	});
+	/** A transcript of `count` distinct bash calls, so each row is identifiable. */
+	const commands = (count: number) =>
+		details(Array.from({ length: count }, (_, i) => assistantCall(`c${i + 1}`, "bash", { command: `echo ${i + 1}` })));
+
+	test("a run that dispatched nothing has no stage rows at all", () => {
+		expect(nestedStageLines([], plain, 0)).toEqual([]);
+	});
+
+	test("a stage with no actions yet is one header row naming the agent", () => {
+		const lines = nestedStageLines([run()], plain, 0);
+		expect(lines.length).toBe(1);
+		expect(lines[0]).toContain("build-agent");
+	});
+
+	test("a running stage shows the last four of its actions, with the hidden count", () => {
+		const lines = nestedStageLines([run({ liveDetails: commands(6) })], plain, 0);
+		// Header, the `... N earlier` row, then the window.
+		expect(lines.length).toBe(6);
+		expect(lines[0]).toContain("build-agent");
+		expect(lines[1]).toContain("... 2 earlier");
+		const actions = lines.slice(2);
+		expect(actions.map((line) => line.trim())).toEqual([
+			"├ $ echo 3",
+			"├ $ echo 4",
+			"├ $ echo 5",
+			"└ $ echo 6",
+		]);
+		expect(actions[0]!.startsWith("    ")).toBe(true);
+	});
+
+	test("a finished stage is its header row only, however much it did", () => {
+		const lines = nestedStageLines([run({ finishedAt: 2000, details: commands(3) })], plain, 0);
+		expect(lines.length).toBe(1);
+		expect(lines[0]).toContain("build-agent");
+	});
+
+	test("a failed stage's header marks it failed", () => {
+		const failedDetails = {
+			mode: "single",
+			agentScope: "user",
+			projectAgentsDir: null,
+			results: [{ messages: [], exitCode: 1 }],
+		} as unknown as SubagentDetails;
+		const lines = nestedStageLines([run({ finishedAt: 2000, details: failedDetails })], plain, 0);
+		expect(lines.length).toBe(1);
+		expect(lines[0]).toContain("✗");
+		expect(lines[0]).not.toContain("✓");
+	});
+
+	/**
+	 * Pi answers a `subagent` call it rejected before dispatch (unparseable arguments, a
+	 * blocked tool) with a toolResult whose `details` is `{}` — truthy, but with no `results`.
+	 * It is paired into a nested run like any other, so walking the tree must survive it.
+	 */
+	test("a rejected dispatch carrying no results neither throws nor invents a stage body", () => {
+		const rejected = run({ finishedAt: 2000, details: {} as unknown as SubagentDetails });
+		expect(() => nestedStageLines([rejected], plain, 0)).not.toThrow();
+		const lines = nestedStageLines([rejected], plain, 0);
+		expect(lines.length).toBe(1);
+		expect(lines[0]).toContain("build-agent");
+		expect(stageCost(rejected)).toBeNull();
+		expect(stageActionLines(rejected, plain)).toEqual([]);
+		expect(stageHasSummary(rejected)).toBe(false);
+		const owner = { usage: { cost: 0.01 }, messages: [], nestedSubagents: [rejected] } as any;
+		expect(() => resultCost(owner)).not.toThrow();
+		expect(resultCost(owner)).toBeCloseTo(0.01, 10);
 	});
 });
 
@@ -611,7 +749,7 @@ describe("command stage checks", () => {
 		]);
 	});
 
-	test("a stage with no checks has no actions and no rows", () => {
+	test("no checks means no check rows; the stage's rows come from its handoff", () => {
 		expect(checkActionLines(undefined, plain)).toEqual([]);
 		expect(checkActionLines([], plain)).toEqual([]);
 	});
@@ -620,5 +758,87 @@ describe("command stage checks", () => {
 		expect(isCommandStage({ model: "command" })).toBe(true);
 		expect(isCommandStage({ model: "claude-sonnet-4" })).toBe(false);
 		expect(isCommandStage(undefined)).toBe(false);
+	});
+});
+
+describe("a command stage's own handoff is its trace", () => {
+	/** A launcher command stage's result: one handoff record, no transcript, no checks. */
+	const stage = (over: Record<string, unknown> = {}) =>
+		({
+			model: "command",
+			agent: "plan-lint-agent",
+			command: "/Users/koomen/.pi/agent/bin/plan-lint",
+			exitCode: 0,
+			finishedAt: 1,
+			messages: [],
+			usage: { cost: 0 },
+			checks: [],
+			summary: "Plan file not found: x.md. Pass the feature plan.",
+			...over,
+		}) as any;
+	const run = (child: any) =>
+		({ details: { mode: "single", agentScope: "user", projectAgentsDir: null, results: [child] } }) as any;
+	const planLint = JSON.stringify({
+		schemaVersion: 1,
+		taskId: "t",
+		status: "FAIL",
+		summary: "Plan file not found: x.md. Pass the feature plan.",
+		requirements: [],
+		checks: [],
+		files: [],
+		deviations: [],
+		unresolved: [],
+	});
+
+	test("the invocation and the handoff summary are the rows it has to show", () => {
+		const rows = [
+			"$ /Users/koomen/.pi/agent/bin/plan-lint (exit code 0)",
+			"Plan file not found: x.md. Pass the feature plan.",
+		];
+		expect(commandActionLines(stage(), plain)).toEqual(rows);
+		expect(stageActionLines(run(stage()), plain)).toEqual(rows);
+	});
+
+	test("a stage that logged checks shows those instead of its invocation", () => {
+		expect(
+			commandActionLines(stage({ checks: [{ command: "npm run typecheck", exitCode: 1 }], summary: "two failures" }), plain),
+		).toEqual(["$ npm run typecheck (exit code 1)"]);
+	});
+
+	test("the summary comes from the handoff, and a stage without one adds no row", () => {
+		expect(summaryOfHandoff(planLint)).toBe("Plan file not found: x.md. Pass the feature plan.");
+		expect(summaryOfHandoff(JSON.stringify({ status: "PASS" }))).toBeUndefined();
+		expect(summaryOfHandoff("not json")).toBeUndefined();
+		expect(commandActionLines(stage({ summary: undefined }), plain)).toEqual([
+			"$ /Users/koomen/.pi/agent/bin/plan-lint (exit code 0)",
+		]);
+	});
+
+	test("the summary row is one line, cut to fit an action row", () => {
+		const rows = commandActionLines(stage({ summary: `first line\nsecond ${"x".repeat(200)}` }), plain);
+		expect(rows).toHaveLength(2);
+		expect(rows[1]!.includes("\n")).toBe(false);
+		expect(rows[1]!.endsWith("...")).toBe(true);
+		expect(rows[1]!.length).toBeLessThan(110);
+	});
+
+	test("a collapsed stage list can tell that the summary is the answer it owes", () => {
+		// Collapsed normally hides a finished stage's actions, so the summary has to be
+		// offered explicitly or a plan-lint FAIL collapses to a bare stage line.
+		expect(stageHasSummary(run(stage()))).toBe(true);
+		expect(stageHasSummary(run(stage({ checks: [{ command: "cmd", exitCode: 0 }] })))).toBe(false);
+		expect(stageHasSummary(run(stage({ model: "claude-sonnet-4" })))).toBe(false);
+		expect(stageHasSummary(undefined)).toBe(false);
+	});
+
+	test("a plan-lint FAIL at exit 0 is a failed stage, because the body says so", () => {
+		const result = stage({ messages: [{ role: "assistant", content: [{ type: "text", text: planLint }] }] });
+		expect(result.exitCode).toBe(0);
+		expect(isFailedResult(result)).toBe(true);
+		// The same shape carrying PASS in the body passes, so the exit code decided neither.
+		const passing = planLint.replace('"FAIL"', '"PASS"');
+		expect(
+			isFailedResult({ ...result, messages: [{ role: "assistant", content: [{ type: "text", text: passing }] }] }),
+		).toBe(false);
 	});
 });

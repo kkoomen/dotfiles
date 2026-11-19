@@ -17,8 +17,9 @@ launcher records it exactly like a model stage.
 Running a suite is tool orchestration: the exit code already answers "did anything break".
 Paying a reasoning model 28 turns to re-derive that produced 588 PASS results out of 625 runs in
 the measured history — the judgement that *is* needed (what deserves a test) now belongs to
-`build-agent`, which owns the tests for its work, and to the optional `test-agent` design review,
-which reads this gate's gap report instead of re-reading the tree.
+`build-agent`, which owns the tests for its work. `test-agent` is retained only for out-of-route
+audit work and is not dispatched inside a route; a coverage gap in the gate's report returns to
+`build`.
 
 ## What it runs
 
@@ -31,6 +32,10 @@ Discovery, first match wins:
 3. `package.json` → `scripts.test`.
 
 ## Delta rule
+
+The contract's `plan` is the inline plan text for the assigned work; `planFile` is a real plan file
+when one exists and `roadmapFile` is the roadmap index. Use `plan` to decide whether an uncovered
+changed file is in scope, never to excuse a missing suite.
 
 A failure that also fails at the base commit is the zero point, not a regression. The baseline
 comes from `contract.baselineFailures`, or from re-running the same suites at `contract.baseCommit`

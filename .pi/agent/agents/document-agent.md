@@ -31,7 +31,7 @@ still return `NOT_APPLICABLE` when the screening confirms nothing is owed.
 ## Required Context
 
 - Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
-- For a code change, read the repository's root `AGENTS.md`, assigned roadmap item, approved plan, current diff, validation handoffs, and existing documentation related to the changed behavior.
+- For a code change, read the repository's root `AGENTS.md`, assigned roadmap item, the approved plan from `contract.plan` (inline) or `contract.planFile`, current diff, validation handoffs, and existing documentation related to the changed behavior. `contract.roadmapFile` is the roadmap index.
 - Use Graphify when available or required to locate public interfaces and affected documentation. Verify every documented claim against current code, tests, or accepted user decisions.
 - Follow the repository's existing documentation locations, formats, terminology, heading rules, and versioning policy. Do not impose a new template.
 

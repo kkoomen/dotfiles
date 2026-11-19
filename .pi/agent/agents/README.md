@@ -27,7 +27,7 @@ Current reasoning policy on `deepseek-flash`, which supports exactly four levels
 | `max` | `architect-large-agent` — plan authoring is the one stage where a missed consideration costs a repair round, and the level costs $0.03/plan |
 | `high` | `architect-large-brisk-agent` (second attempt only), `architect-agent`, `build-agent`, `test-agent` (design), `code-review-agent`, `integration-review-agent`, `diagnose-agent` |
 | `low` | `orchestrator-agent`, `item-runner-agent`, `wave-planner-agent`, `document-agent` |
-| `off` | every command stage: `formatter-agent`, `plan-lint-agent`, `test-gate-agent`, `doc-trigger-agent`, `commit-agent` |
+| `off` | every command stage: `formatter-agent`, `plan-lint-agent`, `memory-lint-agent`, `test-gate-agent`, `doc-trigger-agent`, `commit-agent` |
 
 The launcher passes these settings even with a pinned model. Provider/model support still determines
 actual reasoning behavior.
@@ -55,10 +55,11 @@ evidence under `PI_STAGE_DIR`, and exit 0 with the verdict in `status`.
 |---|---|---|
 | `bin/mechanical-gate` | `formatter-agent` | format, lint, type-check over the changed set |
 | `bin/plan-lint` | `plan-lint-agent` | whether a plan is verifiable at all |
+| `bin/memory-lint` | `memory-lint-agent` | whether a memory file stays injectable: five fields, resolving evidence, valid scope globs, no duplicates or secrets, 60-line cap |
 | `bin/test-gate` | `test-gate-agent` | suite pass/fail against the base-commit delta, plus the coverage gap |
 | `bin/doc-trigger` | `doc-trigger-agent` | whether documentation is owed, and which paths |
 | `bin/commit-gate` | `commit-agent` | readiness, review scope, message shape and staleness, hygiene, the commit itself |
-| `bin/route-engine` | orchestrator helper | stage order, contract assembly, ledger, advisory recording, repair decision. Exit `0` proceed, `2` usage/ledger error, `3` stop and read the verdict |
+| `bin/route-engine` | orchestrator helper | stage order, contract assembly, ledger, advisory recording, repair decision for the single-item routes (`small`, `normal`, `large`, `documentation`) only. A wave is not a route this engine runs: `item-runner-agent` dispatches each item's stages with the shared wave `taskId` (see [`WAVE.md`](WAVE.md)), so `--work-type wave` and `--item` are refused. Exit `0` proceed, `2` usage/ledger error, `3` stop and read the verdict |
 | `bin/route-cost` | measurement | cost, turns, dispatches, repair rate, cost per landed commit |
 | `bin/gate-config` | configuration | where this repository's gate commands live; no file in the tree |
 
@@ -80,8 +81,15 @@ Two repository-level conventions keep them honest:
 - **Every command has a 15-minute ceiling.** `PI_GATE_TIMEOUT_SECONDS` (or the config's
   `timeoutSeconds`) overrides it; a killed command is reported as a failure naming the timeout, never
   as a pass. Note that it kills the shell, so a detached daemon (a Gradle daemon) can outlive it.
-- **`plan-lint` refuses the roadmap index.** `contract.planFile` must be the assigned feature file,
-  not `00-roadmap.md`: linting an index's checklist would pass on entry lines and prove nothing.
+- **`plan-lint` refuses the roadmap index.** `contract.planFile` must be a real plan file, not
+  `00-roadmap.md`: linting an index's checklist would pass on entry lines and prove nothing.
+  Record that file with `route-engine init --plan <path>`. `contract.planFile` is a plan file — the
+  roadmap feature file or one the architect wrote in the worktree — `contract.roadmapFile` carries
+  the roadmap index separately, and `contract.plan` is inline plan text, never a path. The plan text
+  reaches build, test-gate, document, review, and commit (capped at 2000 characters, naming the
+  architect record). Neither plan field may name a launcher run record (`runs/stage-*/final.md`);
+  a run record, an index, or a contract carrying neither is refused by name as a contract
+  misconfiguration, which means the dispatch is wrong, not the plan.
 - **A worktree without its bootstrap is `BLOCKED`, not failing.** A fresh worktree has no
   `node_modules` and no Android SDK; the formatter gate reports that as an environment problem naming
   the fix, because no file can be blamed for it.
@@ -90,6 +98,35 @@ Two repository-level conventions keep them honest:
 the launcher already writes, and reports the same numbers that justified these gates (14.2 dispatches
 per task, 2.6 build rounds per commit, 7 of 9,897 repairs using warm repair, top 10% of tasks holding
 51% of cost).
+
+## Memory Loop
+
+The harness already writes down every failure it pays for — `runs/*/record.json` holds 10k+ handoffs and
+`.pi/state/` holds the ledgers. The memory loop turns that corpus into a small, cited set of lessons
+that is injected at the start of a matching turn, instead of being re-learned by hand each task.
+
+| binary | job |
+|---|---|
+| `bin/memory-mine` | read-only over `runs/` and ledgers: groups `FAIL`/`BLOCKED`/`REPLAN_REQUIRED` by `agent\|requirement\|location` and non-zero checks by `agent\|normalizedCommand`, with recurrence counts |
+| `bin/memory-promote` | the only writer of an entry: requires evidence that still resolves, no duplicate, recurrence >= 2 or `--approve`, and always `--approve` for global. `--dry-run` writes nothing |
+| `bin/memory-lint` | the guard: five fields, resolving evidence, valid scope globs, no duplicates, no secret shapes, 60-line cap. `--explain --cwd --prompt` shows the selection and its scores |
+| `bin/memory-prune` | expires entries unused for 30 days (`~/.pi/agent/memory/index.json` last use, else the entry's `created`) |
+| `bin/memory-stats` | first-attempt pass rate, repairs per task, escalations per task, per project, read-only |
+
+Two files are writable and no others: `<repo>/.pi/memory.md` (project) and
+`~/.pi/agent/memory/global.md` (global). **Gitignore `<repo>/.pi/memory.md`** — it is local machine
+state, it changes per checkout, and it is not a team artifact. The extension
+(`extensions/memory.ts`) injects at most 5 entries / 1200 characters, only when an entry's scope glob
+matches the cwd or a file the prompt names, as one `display: false` `customType: "memory"` message; when
+nothing matches it injects nothing. Global entries get no exception to that rule.
+
+The model can record and retract a lesson directly with `memory_add` and `memory_forget`; both resolve
+their target through `bin/lib/memory.mjs` (the project file resolves from the repository root — git
+first, else the outermost `.pi` owner — never from a route worktree), so any path outside those two
+files is refused, and a global write **or removal** requires a user confirmation. `/retro` mines one finished task into
+`~/.pi/agent/memory/pending/<taskId>.json`, lets one cheap thinking-off model tighten the claim and
+scope wording only, then runs `memory-promote --dry-run`. It never writes `memory.md`: promotion stays a
+user decision.
 
 ## Roadmap Convention
 
@@ -101,9 +138,9 @@ per task, 2.6 build rounds per commit, 7 of 9,897 repairs using warm repair, top
 ## Work Types and Routes
 
 - **Small fix:** localized, low-risk work with explicit behavior and no architectural or product decision. Route build → doc-trigger → formatter → commit, all inside one route worktree on `route/<taskId>`. `doc-trigger` answers the documentation question as a command stage; a real obligation means the change was not a small fix.
-- **Normal feature:** contained feature work using established patterns. Route architect-agent → plan-lint → build → doc-trigger → formatter → code review → commit, all inside one route worktree on `route/<taskId>`. The plan is not user-gated: it carries no user-owned decision by definition.
-- **Large feature:** cross-cutting, high-risk, migration-heavy, contract-changing, or genuinely ambiguous work. Route architect-large-agent → plan approved → plan-lint → build → test-gate → doc-trigger → document when owed → formatter → code review → commit, all inside one route worktree on `route/<taskId>`. The large-feature architect runs the user interview and stores a full detailed plan in the assigned roadmap feature file. The documentation stage may justify non-applicability; it is not silently omitted.
-- **Wave:** two or more independent large roadmap items run concurrently as a worker pool of N = 8, each worker owning one item inside its own worktree for one round, with the next round picking the next ready items until the scope is empty. The authoritative scheduler, readiness predicate, per-stage rules, dependency taxonomy, failure routing, and follow-up route live in [`WAVE.md`](WAVE.md); the list below is orientation, not the contract. Shape: wave-planner-agent (`WAVE_READY` gate) → one scope-level plan approval → repeat { pick up to N = 8 ready items → one `parallel` call of `item-runner-agent` workers, each running architect-large (plan validation) → plan-lint → build → doc-trigger → document when owed → formatter → code-review → commit inside its own worktree → cherry-pick the returned commits in pick order } until the queue drains → test-gate-agent per workspace (command stage, delta gate) → integration-review-agent (last content inspection) → readiness report (no commit). There is no item cap and no fixed batch: roadmap size never forces sequential waves. Every edge is `contract`, `runtime`, `collision`, or `evidence`. An item is quarantined after the third failed repair round; a committed item is never reverted and its repair is a follow-up commit.
+- **Normal feature:** contained feature work using established patterns. Route architect-agent → plan-lint → build → memory-lint → doc-trigger → formatter → code review → commit, all inside one route worktree on `route/<taskId>`. The plan is not user-gated: it carries no user-owned decision by definition.
+- **Large feature:** cross-cutting, high-risk, migration-heavy, contract-changing, or genuinely ambiguous work. Route architect-large-agent → plan-lint → plan approved → build → memory-lint → test-gate → doc-trigger → document when owed → formatter → code review → commit, all inside one route worktree on `route/<taskId>`. The user is asked to approve the plan only after `plan-lint` accepts it, and the exact wording is recorded with `route-engine init --approved`; `commit-gate` refuses a large commit without it. The large-feature architect runs the user interview and stores a full detailed plan in the assigned roadmap feature file. The documentation stage may justify non-applicability; it is not silently omitted.
+- **Wave:** two or more independent large roadmap items run concurrently as a worker pool of N = 8, each worker owning one item inside its own worktree for one round, with the next round picking the next ready items until the scope is empty. The authoritative scheduler, readiness predicate, per-stage rules, dependency taxonomy, failure routing, and follow-up route live in [`WAVE.md`](WAVE.md); the list below is orientation, not the contract. Shape: wave-planner-agent (`WAVE_READY` gate) → one scope-level plan approval → repeat { pick up to N = 8 ready items → one `parallel` call of `item-runner-agent` workers, each running architect-large (plan validation) → plan-lint → build → memory-lint → doc-trigger → document when owed → formatter → code-review → commit inside its own worktree → cherry-pick the returned commits in pick order } until the queue drains → test-gate-agent per workspace (command stage, delta gate) → integration-review-agent (last content inspection) → readiness report (no commit). There is no item cap and no fixed batch: roadmap size never forces sequential waves. Every edge is `contract`, `runtime`, `collision`, or `evidence`. An item is quarantined after the third failed repair round; a committed item is never reverted and its repair is a follow-up commit. The per-item stage sequence is dispatched by `item-runner-agent`, not by `bin/route-engine`, which owns only the single-item routes; `commit-gate` still receives `workType: wave` for each item and follow-up commit.
 
 A long description or detailed user-authored plan does not by itself make a task large. The orchestrator classifies by uncertainty, risk, breadth, and contract impact, and reclassifies when implementation reveals broader scope.
 
@@ -117,10 +154,11 @@ A plan is confirmed by the user only when it carries a user-owned decision: ever
 - **architect-large-agent:** interviews user-owned decisions and produces the detailed roadmap plan for a large feature, at `max` thinking. It never implements the plan.
 - **architect-large-brisk-agent:** the same role at `high`, dispatched only for a second plan attempt after a rejection, a second `plan-lint` refusal, or two repair rounds.
 - **build-agent:** implements production changes and owns focused, valuable tests for its work. It never edits roadmaps, performs independent review, or commits.
-- **test-agent:** reviews test *design* when `test-gate` reports uncovered changed behavior or the plan asks for it. Suite execution belongs to the command stage; test code is owned by `build-agent`. It never changes production code.
+- **test-agent:** retained only for out-of-route audit work. It is not dispatched inside a route; `build-agent` owns test code, and a coverage gap reported by `test-gate` returns to `build`. It never changes production code.
 - **code-review-agent:** independently reviews the complete implementation and tests. It never fixes or commits what it reviews.
 - **formatter-agent:** command stage (`bin/mechanical-gate`). Runs the repository's own format, lint, and type-check over the changed set, keeping only findings that name a changed file. Never changes behavior.
 - **plan-lint-agent:** command stage (`bin/plan-lint`). Refuses a plan with no acceptance criteria, no owning paths, or mostly vague outcomes. Runs before build; a FAIL returns to the architect that owns the plan.
+- **memory-lint-agent:** command stage (`bin/memory-lint`). Refuses a memory file that could not be injected safely — wrong field count, unresolvable evidence, an invalid scope glob, a duplicate claim, a secret, or more than 60 lines. Runs after `build`; a FAIL rewinds to `build`, which owns the memory file, so the repaired file is linted again before commit.
 - **test-gate-agent:** command stage (`bin/test-gate`). Runs the suites, applies the delta rule against the base commit, and reports the changed files no test refers to. Never writes code or tests.
 - **doc-trigger-agent:** command stage (`bin/doc-trigger`). Decides whether documentation is owed and names the paths and identifiers, so the documenter does not have to hunt and no model is paid to conclude "nothing to do".
 - **document-agent:** updates user and maintainer documentation when implemented behavior creates a documentation obligation. `docs/` pages are onboarding material: general concepts, headings, tables, bullets, short paragraphs — never implementation detail. It never changes production code or roadmap plans.

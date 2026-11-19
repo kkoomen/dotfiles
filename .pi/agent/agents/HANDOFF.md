@@ -12,6 +12,12 @@ Two optional fields describe the dispatch itself rather than the work:
 
 - `repairOf` — the absolute path of the record this dispatch repairs. Present on every repair round. It selects **warm session continuation**: the launcher resumes the same stage session for that `(taskId, agent, itemId)`, so your context still holds the attempt under repair. Continue from it. Fix only the findings named in the task text, re-run only the checks those findings affect, and never re-derive the plan or repeat what is already on disk. A repair with `repairOf` is one iteration, not a restart.
 
+The plan reaches the stages that need it, not just the architect:
+
+- `contract.plan` is inline plan text (never a path), carried for `build`, `test-gate`, `document`, `review`, and `commit`. It is the architect record's `summary`, capped at 2000 characters with a `[truncated …]` marker naming the source record. Use it as the implemented and verified intent; tie a finding or an acceptance check back to it.
+- `contract.planFile` is a real plan file only — the assigned roadmap feature file or a file the architect wrote in the worktree. It is never the roadmap index and never a launcher run record.
+- `contract.roadmapFile` is the roadmap index path, kept separate so no stage has to guess whether `planFile` is a plan or an index.
+
 There is no cost or turn ceiling. The launcher records usage in `runs/.spend.json` for accounting only and never refuses or interrupts a stage because of it. Spend is a reporting concern, not a gate.
 
 Every orchestrator dispatch runs in a worktree on a git-backed target, so the contract also carries `worktreePath` and `baseCommit`, delivered as described under *Runtime-enforced constraints*. A non-git target gets no dispatch at all and no `AWAITING DECISION` about creating a repository: the user initializes Git before invoking Pi, so the orchestrator falls back to a direct edit in the primary checkout on its own and reports that in one line. A wave dispatch additionally carries `waveId`, `round`, and `itemId`. Never infer any of them from a path. A wave has no `layer` and no `mergeOrder`: every item in a round shares that round's assembly head as its `baseCommit`, and assembly order follows the round's pick order. On a single-item route `baseCommit` is the recorded `<routeBase>` and the worktree branch is `route/<taskId>`.
@@ -78,13 +84,14 @@ The launcher validates every handoff and rejects the dispatch on violation. A sh
 - `contract.taskId` must match `/^[\w.-]+$/` and appear unchanged in the response.
 - `schemaVersion` must be `1` when present. A record carrying a version this launcher does not know is rejected rather than interpreted.
 - A `findings` array, when present, needs a unique non-empty `id`, a non-empty `location`, and a non-empty `scenario` on every entry.
-- `contract.requirements` must be non-empty, unique, and match `/^R\d+(?:\.\d+)*$/`. Use `R1`, `R2`, `R1.1`. Identifiers such as `RV-01`, `DB-3`, or `C4` are rejected; map them to `R`-style IDs before dispatching.
+- `contract.requirements` must be non-empty and unique, with every entry matching `/^R\d+(?:\.\d+)*$/` on its id. Use `R1`, `R2`, `R1.1`; identifiers such as `RV-01`, `DB-3`, or `C4` are rejected. Each entry is `{ id, text?, owner? }`. Older contracts carrying bare ids (`["R1","R2"]`) remain valid and are normalised on read; `text` carries the requirement's meaning and `owner` names its owning stage or agent.
 - The response must cover exactly the assigned requirement IDs: no missing, extra, or duplicate entries. Every requirement needs at least one non-empty `evidence` string.
 - Allowed `state` values are fixed per agent:
   - `architect-*` and `wave-planner-agent`: `planned`
   - `build-agent`: `implemented`
   - `document-agent`, `formatter-agent`: `verified` or `not_applicable`
   - every other agent, including `integration-review-agent`: `verified`
+  - A non-owning stage may also report `not_applicable` for a requirement whose `owner` names a different stage or agent, with an evidence string stating why it is out of scope. Owning stages keep the states above, and a requirement with no named owner behaves exactly as before.
 - Allowed `status` values are fixed per agent:
   - `architect-*`: `PLAN_READY`
   - `wave-planner-agent`: `WAVE_READY`
@@ -101,6 +108,7 @@ The launcher validates every handoff and rejects the dispatch on violation. A sh
 - `contract.workType` must be one of `small`, `normal`, `large`, or `wave`. A `commit-agent` dispatch also requires `expectedSnapshot`, and the launcher rejects a commit whose latest formatter record carries a different snapshot.
 - A `commit-agent` dispatch requires evidence for every stage of its route: `small` → build, formatter; `normal` → architect, plan-lint, build, formatter, review; `large` → architect-large, plan-lint, build, test-gate, document when `documentRequired` is true, formatter, review; `wave` → plan-lint, build, formatter, review. The command stages (`plan-lint-agent`, `test-gate-agent`, `doc-trigger-agent`, `formatter-agent`) count as evidence exactly like a model stage. The wave planner record is never part of an item commit: it is dispatched once for the wave, before any worktree exists, and the item runner that commits has no access to it.
 - `worktreePath` and its `baseCommit` are required on every orchestrator dispatch, not just a wave: they name the worktree the stage must work in and the commit it is measured against. `worktreePath` is delivered twice and both are required: as a contract field that tells the agent where to work, and as the launcher's `cwd` argument. Pass them always equal. `cwd` is what drives the recorded snapshot, the review file digests, check-log path resolution, and the agent process's working directory; `worktreePath` alone changes nothing. A stage that cannot see a matching `cwd` reports the mismatch instead of editing the primary checkout.
+- `test-agent` is not dispatched inside a route: `build-agent` owns test code, and a coverage gap reported by `test-gate` returns to `build` as a repair. `test-agent` is retained only for out-of-route audit work.
 - `QUARANTINED` is not a handoff status and no specialist may return it. It is an item state the orchestrator records in wave state.
 
 ## Final response

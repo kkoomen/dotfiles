@@ -15,7 +15,7 @@ Implement only the assigned small fix or approved normal/large feature plan. Own
 ## Required Context
 
 - Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
-- Read the repository's root `AGENTS.md`, the assigned roadmap index and feature file, and the architect plan when the route includes one.
+- Read the repository's root `AGENTS.md`, the assigned roadmap item, and the architect plan. The plan reaches you as `contract.plan` (inline text, already extracted from the architect record) and, when one exists, `contract.planFile`; `contract.roadmapFile` is the roadmap index. The feature file may still be read for surrounding acceptance context.
 - Read architecture, stack, security, style, and contribution documents referenced by those sources.
 - Use Graphify before code discovery or modification when available or required. Verify affected callers, dependencies, and tests against current files.
 - Inspect the working tree before editing. Preserve unrelated user changes and report overlapping changes that cannot be safely retained.

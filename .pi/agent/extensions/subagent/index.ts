@@ -35,8 +35,11 @@
  *     (`Edited file2.md`, `$ npm run format (exit code 1)`), indented under a
  *     ├/└ branch line. A command line carries its exit code, so a retry loop
  *     reads as `exit code 1` repeated and then `0`. A finished stage is only its
- *     marker, time and name. A run that works directly keeps its ordinary trace,
- *     except a coordinator's own trace uses the stage-action window.
+ *     marker, time and name, and a stage that has reported nothing yet says it is
+ *     still preparing instead of reading as no output. A coordinating run shows the
+ *     stages it dispatched even before it has reported an item of its own, and its
+ *     own placeholder is not shown. A run that works directly keeps its ordinary
+ *     trace, except a coordinator's own trace uses the stage-action window.
  *   - Expanded view shows the agent's final verdict first, then the
  *     full activity trace.
  *   - Work type and mode on every line: the call and each result show the
@@ -94,6 +97,9 @@ const STAGE_EXPANDED_COUNT = 20;
  */
 const STAGE_ACTION_COUNT = 4;
 const STAGE_INDENT = "    ";
+
+/** How much of a handoff summary one action row shows before it is cut. */
+const SUMMARY_PREVIEW_CHARS = 100;
 
 /** Max indentation depth for the recursive nested-subagent tree. */
 const NESTED_MAX_DEPTH = 4;
@@ -409,10 +415,24 @@ type WaveTheme = ExtensionContext["ui"]["theme"];
 /** Exactly the theme token union, so a renamed or invented colour fails the typecheck. */
 type WaveColor = Parameters<WaveTheme["fg"]>[0];
 
+/**
+ * The results of a dispatch's details, or an empty list.
+ *
+ * `details` is not always ours: Pi answers a `subagent` call it rejected before dispatch
+ * (unparseable arguments, a blocked tool) with a toolResult that carries `details: {}`, and a
+ * child's live payload arrives deserialized from another process. Both reach the renderer as a
+ * truthy object with no `results`, so never read the array without this guard.
+ */
+export function detailsResults(details: SubagentDetails | undefined): SingleResult[] {
+	const results = (details as { results?: unknown } | undefined)?.results;
+	return Array.isArray(results) ? (results as SingleResult[]) : [];
+}
+
 /** A parallel dispatch is a wave when two or more of its tasks carry `workType: wave`. */
 export function isWaveDispatch(details: SubagentDetails | undefined): boolean {
-	if (!details || details.mode !== "parallel" || details.results.length < 2) return false;
-	return details.results.filter((result) => result.workType === "wave").length >= 2;
+	const results = detailsResults(details);
+	if (!details || details.mode !== "parallel" || results.length < 2) return false;
+	return results.filter((result) => result.workType === "wave").length >= 2;
 }
 
 /**
@@ -1167,14 +1187,17 @@ export function stageItems(
 /**
  * Whether a stage line carries its action tail. Only a stage that is still
  * working does: a finished (or failed) stage is fully described by its marker,
- * time and name, and its command list lives in the expanded trace.
+ * time and name, and its command list lives in the expanded trace. The one
+ * exception is a stage whose handoff summary is the answer it owes — see
+ * `stageHasSummary` — because collapsing that leaves the reason invisible.
  */
 export function stageShowsActions(
 	timing: StageTiming | null,
 	mode: "collapsed" | "expanded" = "collapsed",
+	hasSummary = false,
 ): boolean {
 	if (mode === "expanded") return true;
-	return timing === null || timing.running;
+	return timing === null || timing.running || hasSummary;
 }
 
 /**
@@ -1189,7 +1212,7 @@ export function dispatchedCost(owner: SingleResult, depth = 0): number {
 	for (const run of runs) {
 		const runDetails = run.details ?? run.liveDetails;
 		if (!runDetails) continue;
-		for (const child of runDetails.results) {
+		for (const child of detailsResults(runDetails)) {
 			total += child.usage?.cost ?? 0;
 			total += dispatchedCost(child, depth + 1);
 		}
@@ -1208,9 +1231,11 @@ export function resultCost(result: SingleResult): number {
  */
 export function stageCost(run: { details?: SubagentDetails; liveDetails?: SubagentDetails } | undefined): number | null {
 	const runDetails = run?.details ?? run?.liveDetails;
-	if (!runDetails || runDetails.results.length === 0) return null;
+	if (!runDetails) return null;
+	const results = detailsResults(runDetails);
+	if (results.length === 0) return null;
 	let total = 0;
-	for (const result of runDetails.results) total += resultCost(result);
+	for (const result of results) total += resultCost(result);
 	return total;
 }
 
@@ -1241,27 +1266,28 @@ export function stageActionLines(
 ): string[] {
 	const runDetails = run?.details ?? run?.liveDetails;
 	if (!runDetails) return [];
+	const children = detailsResults(runDetails);
 	// Results arrive as their own messages, so pair them with their calls first:
 	// the exit code of a command lives on its result, not on the call that ran it.
 	const results = new Map<string, { isError?: boolean; content?: unknown }>();
-	for (const child of runDetails.results) {
-		for (const message of child.messages) {
+	for (const child of children) {
+		for (const message of child.messages ?? []) {
 			if (message.role === "toolResult") results.set(message.toolCallId, message as any);
 		}
 	}
 	const lines: string[] = [];
-	for (const child of runDetails.results) {
-		for (const item of getDisplayItems(child.messages)) {
+	for (const child of children) {
+		for (const item of getDisplayItems(child.messages ?? [])) {
 			if (item.type !== "toolCall") continue;
 			const exitCode = item.name === "bash" ? exitCodeOf(results.get(item.id)) : null;
 			// One command, one row: a script in the arguments must not wrap the list.
 			lines.push(oneLine(formatStageAction(item.name, item.args, themeFg, exitCode)));
 		}
 	}
-	// A command stage ran no tool calls, so its handoff checks are what it executed.
+	// A command stage ran no tool calls, so its own invocation and handoff are what it did.
 	if (lines.length === 0) {
-		for (const child of runDetails.results) {
-			lines.push(...checkActionLines(child.checks, themeFg, 0));
+		for (const child of children) {
+			lines.push(...commandActionLines(child, themeFg, 0));
 		}
 	}
 	return windowActionLines(lines, themeFg, limit);
@@ -1282,6 +1308,101 @@ export function checkActionLines(
 		oneLine(formatStageAction("bash", { command: check.command }, themeFg, check.exitCode)),
 	);
 	return windowActionLines(lines, themeFg, limit);
+}
+
+/**
+ * The rows a command stage shows where a model stage shows its trace: the invocation it
+ * declares, then — when it logged no `checks[]` — its own handoff `summary`, which is its
+ * answer. A gate that reports `FAIL` at exit 0 (plan-lint) logs no checks, so without the
+ * summary its stage line would carry no reason at all.
+ */
+export function commandActionLines(
+	stage:
+		| {
+				command?: string;
+				exitCode?: number;
+				checks?: { command: string; exitCode: number }[];
+				summary?: string;
+		  }
+		| undefined,
+	themeFg: (color: any, text: string) => string,
+	limit = STAGE_ACTION_COUNT,
+): string[] {
+	if (!stage) return [];
+	// A stage that logged checks already shows what it executed, row by row.
+	if (stage.checks && stage.checks.length > 0) return checkActionLines(stage.checks, themeFg, limit);
+	const lines: string[] = [];
+	if (stage.command) {
+		lines.push(oneLine(formatStageAction("bash", { command: stage.command }, themeFg, stage.exitCode ?? null)));
+	}
+	if (stage.summary) {
+		const summary = oneLine(stage.summary);
+		const preview =
+			summary.length > SUMMARY_PREVIEW_CHARS ? `${summary.slice(0, SUMMARY_PREVIEW_CHARS)}...` : summary;
+		lines.push(themeFg("toolOutput", preview));
+	}
+	return windowActionLines(lines, themeFg, limit);
+}
+
+/**
+ * True when a stage's handoff `summary` is the answer it has to give: a command stage that
+ * logged no checks. A collapsed view hides a finished stage's actions, which would leave a
+ * plan-lint `FAIL` as a stage line with no reason under it.
+ */
+export function stageHasSummary(
+	run: { details?: SubagentDetails; liveDetails?: SubagentDetails } | undefined,
+): boolean {
+	const runDetails = run?.details ?? run?.liveDetails;
+	if (!runDetails) return false;
+	return detailsResults(runDetails).some(
+		(child) => isCommandStage(child) && (child.checks?.length ?? 0) === 0 && Boolean(child.summary),
+	);
+}
+
+/**
+ * The collapsed stage blocks of a run's nested dispatches, one block each, in order:
+ * the same header `renderStageList` draws (marker, time, name, work type, finished
+ * cost) followed — while the stage is still working — by its last few actions under
+ * a ├/└ branch. Used where there is no stage list to walk: a coordinator repainting
+ * the stages it dispatched, or stages recovered from message history. Display only.
+ */
+export function nestedStageLines(
+	runs: {
+		toolCallId?: string;
+		agent: string;
+		task?: string;
+		workType?: string;
+		startedAt: number;
+		finishedAt?: number;
+		details?: SubagentDetails;
+		liveDetails?: SubagentDetails;
+	}[],
+	themeFg: (color: any, text: string) => string,
+	now: number,
+	limit = STAGE_ACTION_COUNT,
+): string[] {
+	const lines: string[] = [];
+	for (const run of runs) {
+		const timing = getNestedRunTiming(run);
+		const failed = detailsResults(run.details ?? run.liveDetails).some(isFailedResult);
+		let header = themeFg("muted", "→ ");
+		const status = stageStatus(timing, failed, now, themeFg);
+		if (status) header += `${status} `;
+		// The helper takes one colour function only, so colour carries the emphasis.
+		header += failed ? themeFg("error", run.agent) : themeFg("accent", run.agent);
+		if (run.workType) header += themeFg("warning", ` · ${run.workType}`);
+		// Only a finished stage has a total: a running one is still climbing.
+		const costLabel = stageCostLabel(timing && !timing.running ? stageCost(run) : null);
+		if (costLabel) header += themeFg("dim", ` ${costLabel}`);
+		lines.push(header);
+		if (!stageShowsActions(timing, "collapsed", stageHasSummary(run))) continue;
+		const actions = stageActionLines(run, themeFg, limit);
+		actions.forEach((action, index) => {
+			const branch = index === actions.length - 1 ? "└" : "├";
+			lines.push(`${STAGE_INDENT}${themeFg("muted", `${branch} `)}${action}`);
+		});
+	}
+	return lines;
 }
 
 /** The tail of an action list: the last `limit` rows plus how many it hid. */
@@ -1305,13 +1426,37 @@ export function isCommandStage(result: { model?: string } | undefined): boolean 
 }
 
 /**
- * How many of its own items a directly dispatched run shows when collapsed. A
- * coordinator's own commands are the plumbing between its stages, so its trace
+ * The engine's own agents: the coordinator routes work and the diagnostician reads
+ * a defect, so their own commands are plumbing rather than work the reader handed
+ * over. They are shown as a window, not a transcript.
+ */
+const ENGINE_TRACE_AGENTS = new Set(["orchestrator-agent", "diagnose-agent"]);
+
+/**
+ * How many of its own items a directly dispatched run shows when collapsed. An
+ * engine agent's own commands are the plumbing behind its stages, so its trace
  * gets the same four-line window a stage's actions get; any other directly
  * dispatched agent keeps its ordinary ten-item trace. Exact name match only.
  */
 export function ownTraceLimit(agent: string): number {
-	return agent === "orchestrator-agent" ? STAGE_ACTION_COUNT : COLLAPSED_ITEM_COUNT;
+	return ENGINE_TRACE_AGENTS.has(agent) ? STAGE_ACTION_COUNT : COLLAPSED_ITEM_COUNT;
+}
+
+/** The single-agent streaming cell before the agent has reported anything. */
+export const AGENT_STARTING_TEXT = "Preparing the agent — loading its instructions and the workspace…";
+
+/** The collapsed per-stage cell for a stage that has reported neither messages nor actions. */
+export const STAGE_STARTING_TEXT = "Preparing the stage — agent starting, no actions reported yet…";
+
+/**
+ * The rows under one collapsed stage's header. A command stage's lines are the actions it
+ * ran, so they win over both a transcript and the placeholder; a stage that has reported
+ * nothing yet is still starting, not finished with no output.
+ */
+export function collapsedStageBody(commandLines: string, items: string, running: boolean): string {
+	if (commandLines) return commandLines;
+	if (items) return items;
+	return running ? STAGE_STARTING_TEXT : "(no output)";
 }
 
 interface NestedSubagentRun {
@@ -1397,7 +1542,7 @@ export function stageStatus(
 /**
  * How long a nested subagent ran (or has been running).
  */
-function getNestedRunTiming(run: NestedSubagentRun): StageTiming | null {
+function getNestedRunTiming(run: { startedAt: number; finishedAt?: number }): StageTiming | null {
 	if (!run.startedAt) return null;
 	const elapsed = (run.finishedAt ?? Date.now()) - run.startedAt;
 	const time = formatDuration(elapsed);
@@ -1482,6 +1627,17 @@ export interface SingleResult {
 	 * where a model stage would list its tool calls.
 	 */
 	checks?: { command: string; exitCode: number }[];
+	/**
+	 * The `command:` the agent declares, recorded at spawn. A command stage's own
+	 * invocation is what it ran, so the renderer names it above its summary.
+	 */
+	command?: string;
+	/**
+	 * `summary` of the handoff a command stage printed. A command stage with no `checks[]`
+	 * (plan-lint reports `FAIL` at exit 0) has nothing else to show, so this is its action
+	 * line; without it such a stage reads as a bare, green stage line with no reason.
+	 */
+	summary?: string;
 }
 
 export interface SubagentDetails {
@@ -1495,7 +1651,12 @@ function getFinalOutput(messages: Message[]): string {
 	return finalText(messages);
 }
 
-function isFailedResult(result: SingleResult): boolean {
+/**
+ * True when a result is a failed stage. The exit code is never the whole story: a gate
+ * that reports `FAIL` in its handoff body still exits 0 (plan-lint), so the body's status
+ * decides that case and the exit code only catches a stage that never produced a body.
+ */
+export function isFailedResult(result: SingleResult): boolean {
 	return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted" || Boolean(result.validationError) || Boolean(result.finishedAt && semanticFailure(getFinalOutput(result.messages)));
 }
 
@@ -1955,6 +2116,7 @@ async function runCommandAgent(
 		step,
 		startedAt: Date.now(),
 		nestedSubagents: [],
+		command: agent.command,
 	};
 
 	let output = "";
@@ -2025,6 +2187,22 @@ export function checksOfHandoff(output: string): { command: string; exitCode: nu
 	}
 }
 
+/**
+ * The `summary` of the handoff a command stage printed, or undefined when it printed none.
+ * A gate's answer lives here even when it logged no checks: plan-lint reports `FAIL` in the
+ * body and exits 0, so the summary is the only place its reason exists.
+ */
+export function summaryOfHandoff(output: string): string | undefined {
+	try {
+		const parsed = JSON.parse(output) as { summary?: unknown };
+		if (typeof parsed.summary !== "string") return undefined;
+		const summary = parsed.summary.trim();
+		return summary.length > 0 ? summary : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 /** Shared record-writing path, so a command stage and a model stage are indistinguishable. */
 function finalizeCommandRecord(
 	result: SingleResult,
@@ -2034,6 +2212,7 @@ function finalizeCommandRecord(
 	result.finishedAt ??= Date.now();
 	const output = getFinalOutput(result.messages);
 	result.checks = checksOfHandoff(output);
+	result.summary = summaryOfHandoff(output);
 	if (!result.validationError && result.exitCode === 0 && result.agent) {
 		try {
 			result.validationError =
@@ -2151,10 +2330,24 @@ async function runSingleAgent(
 		nestedSubagents: [],
 	};
 
+	/**
+	 * What a streaming cell says before the agent has reported anything. A coordinator's
+	 * cell lists the stages it dispatched — empty until it has one, so it shows no
+	 * placeholder of its own; every other agent is still preparing.
+	 */
+	const streamingFallback = (): string => {
+		if (currentResult.agent !== "orchestrator-agent") return AGENT_STARTING_TEXT;
+		const runs =
+			currentResult.nestedSubagents.length > 0
+				? currentResult.nestedSubagents
+				: buildNestedRuns(currentResult.messages);
+		return nestedStageLines(runs, (_color: any, text: string) => text, Date.now()).join("\n");
+	};
+
 	const emitUpdate = () => {
 		if (onUpdate) {
 			onUpdate({
-				content: [{ type: "text", text: getFinalOutput(currentResult.messages) || "(running...)" }],
+				content: [{ type: "text", text: getFinalOutput(currentResult.messages) || streamingFallback() }],
 				details: makeDetails([currentResult]),
 			});
 		}
@@ -2639,7 +2832,7 @@ export default function (pi: ExtensionAPI) {
 					const chainUpdate: OnUpdateCallback | undefined = onUpdate
 						? (partial) => {
 								// Combine completed results with current streaming result
-								const currentResult = partial.details?.results[0];
+								const currentResult = detailsResults(partial.details)[0];
 								if (currentResult) {
 									const allResults = [...results, currentResult];
 									onUpdate({
@@ -2738,8 +2931,9 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						// Per-task update callback
 						(partial) => {
-							if (partial.details?.results[0]) {
-								allResults[index] = partial.details.results[0];
+							const streamed = detailsResults(partial.details)[0];
+							if (streamed) {
+								allResults[index] = streamed;
 								emitParallelUpdate();
 							}
 						},
@@ -2960,7 +3154,7 @@ export default function (pi: ExtensionAPI) {
 				for (const item of shown) {
 					const run = runMap.get(item.id);
 					const stageTiming = run ? getNestedRunTiming(run) : null;
-					const failed = Boolean(run?.details?.results.some(isFailedResult));
+					const failed = detailsResults(run?.details ?? run?.liveDetails).some(isFailedResult);
 					const agentName = run?.agent ?? subagentCallLabel(item.args).agent;
 					let header = theme.fg("muted", "→ ");
 					const status = stageStatus(stageTiming, failed, Date.now(), theme.fg.bind(theme));
@@ -2976,9 +3170,10 @@ export default function (pi: ExtensionAPI) {
 					if (costLabel) header += theme.fg("dim", ` ${costLabel}`);
 					lines.push(header);
 					// Collapsed: actions are the live tail of the stage still working, and a
-					// finished stage is its marker, time, name and cost. Expanded: every
-					// stage carries its own last few actions, which is what was opened for.
-					if (!stageShowsActions(stageTiming, mode)) continue;
+					// finished stage is its marker, time, name and cost — unless its handoff
+					// summary is the answer it owes, which a FAIL at exit 0 makes the only reason
+					// there is. Expanded: every stage carries its own last few actions.
+					if (!stageShowsActions(stageTiming, mode, stageHasSummary(run))) continue;
 					const actions = stageActionLines(run, theme.fg.bind(theme));
 					actions.forEach((action, index) => {
 						const branch = index === actions.length - 1 ? "└" : "├";
@@ -3009,9 +3204,9 @@ export default function (pi: ExtensionAPI) {
 					if (depth >= NESTED_MAX_DEPTH) continue;
 					const runDetails = run.details ?? run.liveDetails;
 					if (!runDetails) continue;
-					for (const child of runDetails.results) {
+					for (const child of detailsResults(runDetails)) {
 						const childRuns =
-							child.nestedSubagents.length > 0 ? child.nestedSubagents : buildNestedRuns(child.messages);
+							child.nestedSubagents?.length > 0 ? child.nestedSubagents : buildNestedRuns(child.messages ?? []);
 						out += renderNestedTree(childRuns, depth + 1, budget);
 					}
 				}
@@ -3039,12 +3234,12 @@ export default function (pi: ExtensionAPI) {
 						const base = `${theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme.fg.bind(theme), label)}`;
 						out += `${oneLine(base)}\n`;
 						if (run && (run.details ?? run.liveDetails)) {
-							const runDetails = run.details ?? run.liveDetails!;
-							for (const child of runDetails.results) {
+							const runDetails = (run.details ?? run.liveDetails)!;
+							for (const child of detailsResults(runDetails)) {
 								const childRuns =
-									child.nestedSubagents.length > 0
+									child.nestedSubagents?.length > 0
 										? child.nestedSubagents
-										: buildNestedRuns(child.messages);
+										: buildNestedRuns(child.messages ?? []);
 								out += renderNestedTree(childRuns, 1, budget);
 							}
 						}
@@ -3057,12 +3252,12 @@ export default function (pi: ExtensionAPI) {
 			};
 
 			/**
-			 * A command stage's actions are the checks it ran. Its transcript is one handoff
-			 * record, so printing that would read as JSON where every other agent shows a
-			 * trace of commands.
+			 * A command stage's actions are the invocation it ran and, when it logged no checks,
+			 * its own handoff summary. Its transcript is one handoff record, so printing that
+			 * would read as JSON where every other agent shows a trace of commands.
 			 */
 			const renderCommandActions = (r: SingleResult, limit?: number): string =>
-				checkActionLines(r.checks, theme.fg.bind(theme), limit).join("\n");
+				commandActionLines(r, theme.fg.bind(theme), limit).join("\n");
 
 			if (details.mode === "single" && details.results.length === 1) {
 				const r = details.results[0];
@@ -3102,13 +3297,13 @@ export default function (pi: ExtensionAPI) {
 							// A delegating run is opened to see the stages, not every tool call
 							// of every stage: each one shows its own last few actions.
 							const delegating = isDelegatingRun(displayItems);
-							// A command stage has no tool calls; its checks are the trace.
+							// A command stage has no tool calls; its invocation and summary are the trace.
 							const activity = delegating
 								? renderStageList(displayItems, runMap, "expanded")
 								: renderActivityTree(r);
 							container.addChild(new Spacer(1));
 							const heading = commandActivity
-								? "─── Checks ───"
+								? "─── Command ───"
 								: delegating
 									? "─── Stages ───"
 									: "─── Activity ───";
@@ -3131,22 +3326,28 @@ export default function (pi: ExtensionAPI) {
 				if (r.workType) text += theme.fg("warning", ` · ${r.workType}`);
 				if (isError && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 				if (isError && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
-				else if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
+				else if (displayItems.length === 0) {
+					const runs = r.nestedSubagents.length > 0 ? r.nestedSubagents : buildNestedRuns(r.messages);
+					const stageLines = nestedStageLines(runs, theme.fg.bind(theme), Date.now());
+					if (stageLines.length > 0) text += `\n${stageLines.join("\n")}`;
+					// A coordinator that has dispatched nothing yet has no body worth a placeholder.
+					else if (r.agent !== "orchestrator-agent" || r.exitCode !== -1)
+						text += `\n${theme.fg("muted", "(no output)")}`;
+				}
 				else {
 					const runMap = getNestedRunMap(r);
 					// A run that dispatches agents is shown as the stages it started, not as
 					// the plumbing between them; a run that works directly keeps its trace.
 					const delegating = isDelegatingRun(displayItems);
-					// A command stage ran no tool calls, so its checks are what it executed;
-					// its transcript is the handoff record and would read as JSON here.
+					// A command stage ran no tool calls, so its invocation and handoff summary are
+					// what it did; its transcript is the handoff record and would read as JSON.
 					const commandLines = isCommandStage(r) ? renderCommandActions(r) : "";
 					const limit = ownTraceLimit(r.agent);
+					// A command stage's rows can outrun the window too, so the hint counts them.
+					const commandHidden =
+						isCommandStage(r) && commandActionLines(r, theme.fg.bind(theme), 0).length > STAGE_ACTION_COUNT;
 					text += `\n${commandLines || (delegating ? renderStageList(displayItems, runMap) : renderDisplayItems(displayItems, limit, runMap))}`;
-					if (
-						delegating ||
-						displayItems.length > limit ||
-						(isCommandStage(r) && (r.checks?.length ?? 0) > STAGE_ACTION_COUNT)
-					)
+					if (delegating || displayItems.length > limit || commandHidden)
 						text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 				}
 				const usageStr = formatUsageStats(r.usage, r.model, resultCost(r));
@@ -3222,7 +3423,7 @@ export default function (pi: ExtensionAPI) {
 						}
 						const commandActivity = isCommandStage(r) ? renderCommandActions(r, 0) : "";
 						if (toolCalls.length > 0 || commandActivity) {
-							container.addChild(new Text(theme.fg("muted", commandActivity ? "Checks:" : "Activity:"), 0, 0));
+							container.addChild(new Text(theme.fg("muted", commandActivity ? "Command:" : "Activity:"), 0, 0));
 							const activity = commandActivity || renderActivityTree(r);
 							if (activity) container.addChild(new Text(activity, 0, 0));
 						}
@@ -3256,9 +3457,11 @@ export default function (pi: ExtensionAPI) {
 					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)}${r.workType ? theme.fg("warning", ` · ${r.workType}`) : ""} ${rIcon}`;
 					if (timing) text += ` ${theme.fg("dim", timing.label)}`;
 					const commandLines = isCommandStage(r) ? renderCommandActions(r, 5) : "";
-					if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
-					else if (commandLines) text += `\n${commandLines}`;
-					else text += `\n${renderDisplayItems(displayItems, 5, getNestedRunMap(r))}`;
+					text += `\n${collapsedStageBody(
+						commandLines,
+						displayItems.length > 0 ? renderDisplayItems(displayItems, 5, getNestedRunMap(r)) : "",
+						r.exitCode === -1,
+					)}`;
 				}
 				const usageStr = aggregateStats(details.results);
 				if (usageStr) text += `\n\n${theme.fg("dim", `Total: ${usageStr}`)}`;
@@ -3319,7 +3522,7 @@ export default function (pi: ExtensionAPI) {
 						}
 						const commandActivity = isCommandStage(r) ? renderCommandActions(r, 0) : "";
 						if (toolCalls.length > 0 || commandActivity) {
-							container.addChild(new Text(theme.fg("muted", commandActivity ? "Checks:" : "Activity:"), 0, 0));
+							container.addChild(new Text(theme.fg("muted", commandActivity ? "Command:" : "Activity:"), 0, 0));
 							const activity = commandActivity || renderActivityTree(r);
 							if (activity) container.addChild(new Text(activity, 0, 0));
 						}
@@ -3354,10 +3557,11 @@ export default function (pi: ExtensionAPI) {
 					text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)}${r.workType ? theme.fg("warning", ` · ${r.workType}`) : ""} ${rIcon}`;
 					if (timing) text += ` ${theme.fg("dim", timing.label)}`;
 					const commandLines = isCommandStage(r) ? renderCommandActions(r, 5) : "";
-					if (displayItems.length === 0)
-						text += `\n${theme.fg("muted", r.exitCode === -1 ? "(running...)" : "(no output)")}`;
-					else if (commandLines) text += `\n${commandLines}`;
-					else text += `\n${renderDisplayItems(displayItems, 5, getNestedRunMap(r))}`;
+					text += `\n${collapsedStageBody(
+						commandLines,
+						displayItems.length > 0 ? renderDisplayItems(displayItems, 5, getNestedRunMap(r)) : "",
+						r.exitCode === -1,
+					)}`;
 				}
 				if (!isRunning) {
 					const usageStr = aggregateStats(details.results);

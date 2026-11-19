@@ -12,7 +12,7 @@
  *   bun test ./.pi/agent/extensions/subagent/contract.test.ts
  */
 import { describe, expect, test } from "bun:test";
-import { HANDOFF_SCHEMA_VERSION, ROUTE_STAGES, validateReport } from "./workflow.mjs";
+import { HANDOFF_SCHEMA_VERSION, ROUTE_STAGES, validateContract, validateReport } from "./workflow.mjs";
 
 const contract = { taskId: "t1", requirements: ["R1"] };
 
@@ -93,5 +93,55 @@ describe("ROUTE_STAGES", () => {
 			const review = stages.indexOf("code-review-agent");
 			if (formatter !== -1 && review !== -1) expect(formatter).toBeLessThan(review);
 		}
+	});
+});
+
+describe("requirement ownership", () => {
+	test("accepts { id, text, owner } requirements", () => {
+		expect(
+			validateContract({
+				taskId: "t1",
+				requirements: [{ id: "R1", text: "Implement the guard", owner: "build-agent" }],
+			}),
+		).toBeNull();
+	});
+
+	test("still accepts bare-string requirements from an in-flight ledger", () => {
+		expect(validateContract({ taskId: "t1", requirements: ["R1", "R2"] })).toBeNull();
+	});
+
+	test("a non-owning stage may report not_applicable with a reason", () => {
+		const owned = {
+			taskId: "t1",
+			requirements: [{ id: "R1", text: "Implement the guard", owner: "build-agent" }],
+		};
+		const report = {
+			...base,
+			requirements: [{ id: "R1", state: "not_applicable", evidence: ["owned by build-agent"] }],
+		};
+		expect(validateReport(JSON.stringify(report), owned, "code-review-agent")).toBeNull();
+	});
+
+	test("an owning stage cannot downgrade its own requirement to not_applicable", () => {
+		const owned = {
+			taskId: "t1",
+			requirements: [{ id: "R1", text: "Implement the guard", owner: "build-agent" }],
+		};
+		const report = {
+			...base,
+			requirements: [{ id: "R1", state: "not_applicable", evidence: ["skipped"] }],
+		};
+		expect(validateReport(JSON.stringify(report), owned, "build-agent")).toContain("Unfinished or invalid state");
+	});
+
+	test("a requirement with no owner keeps the per-agent state rules", () => {
+		const unowned = { taskId: "t1", requirements: [{ id: "R1", text: "x" }] };
+		const report = {
+			...base,
+			requirements: [{ id: "R1", state: "not_applicable", evidence: ["irrelevant"] }],
+		};
+		expect(validateReport(JSON.stringify(report), unowned, "code-review-agent")).toContain(
+			"Unfinished or invalid state",
+		);
 	});
 });
