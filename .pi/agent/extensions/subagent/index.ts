@@ -1190,14 +1190,31 @@ export function stageItems(
  * time and name, and its command list lives in the expanded trace. The one
  * exception is a stage whose handoff summary is the answer it owes — see
  * `stageHasSummary` — because collapsing that leaves the reason invisible.
+ *
+ * `finished` is the stage's own toolResult, not its clock: a run whose messages
+ * carried no timestamp has no timing to read, and treating `null` timing as
+ * "still going" left a done stage's last four commands on screen.
  */
 export function stageShowsActions(
 	timing: StageTiming | null,
 	mode: "collapsed" | "expanded" = "collapsed",
 	hasSummary = false,
+	finished = false,
 ): boolean {
 	if (mode === "expanded") return true;
+	if (finished) return hasSummary;
 	return timing === null || timing.running || hasSummary;
+}
+
+/**
+ * Whether a task of a parallel or chain dispatch shows its rows in the collapsed cell.
+ * Same rule as a stage line: only the task still working shows its tail, plus the command
+ * stage whose handoff summary is the answer it owes.
+ */
+export function taskShowsActions(result: SingleResult | undefined): boolean {
+	if (!result) return false;
+	if (result.exitCode === -1 || result.finishedAt === undefined) return true;
+	return isCommandStage(result) && (result.checks?.length ?? 0) === 0 && Boolean(result.summary);
 }
 
 /**
@@ -1395,7 +1412,7 @@ export function nestedStageLines(
 		const costLabel = stageCostLabel(timing && !timing.running ? stageCost(run) : null);
 		if (costLabel) header += themeFg("dim", ` ${costLabel}`);
 		lines.push(header);
-		if (!stageShowsActions(timing, "collapsed", stageHasSummary(run))) continue;
+		if (!stageShowsActions(timing, "collapsed", stageHasSummary(run), run.finishedAt !== undefined)) continue;
 		const actions = stageActionLines(run, themeFg, limit);
 		actions.forEach((action, index) => {
 			const branch = index === actions.length - 1 ? "└" : "├";
@@ -3173,7 +3190,8 @@ export default function (pi: ExtensionAPI) {
 					// finished stage is its marker, time, name and cost — unless its handoff
 					// summary is the answer it owes, which a FAIL at exit 0 makes the only reason
 					// there is. Expanded: every stage carries its own last few actions.
-					if (!stageShowsActions(stageTiming, mode, stageHasSummary(run))) continue;
+					if (!stageShowsActions(stageTiming, mode, stageHasSummary(run), run?.finishedAt !== undefined))
+						continue;
 					const actions = stageActionLines(run, theme.fg.bind(theme));
 					actions.forEach((action, index) => {
 						const branch = index === actions.length - 1 ? "└" : "├";
@@ -3456,10 +3474,12 @@ export default function (pi: ExtensionAPI) {
 					const timing = getAgentTiming(r);
 					text += `\n\n${theme.fg("muted", `─── Step ${r.step}: `)}${theme.fg("accent", r.agent)}${r.workType ? theme.fg("warning", ` · ${r.workType}`) : ""} ${rIcon}`;
 					if (timing) text += ` ${theme.fg("dim", timing.label)}`;
-					const commandLines = isCommandStage(r) ? renderCommandActions(r, 5) : "";
+					// Only the step still working shows its rows: a finished step is its header.
+					if (!taskShowsActions(r)) continue;
+					const commandLines = isCommandStage(r) ? renderCommandActions(r, STAGE_ACTION_COUNT) : "";
 					text += `\n${collapsedStageBody(
 						commandLines,
-						displayItems.length > 0 ? renderDisplayItems(displayItems, 5, getNestedRunMap(r)) : "",
+						displayItems.length > 0 ? renderDisplayItems(displayItems, STAGE_ACTION_COUNT, getNestedRunMap(r)) : "",
 						r.exitCode === -1,
 					)}`;
 				}
@@ -3556,10 +3576,12 @@ export default function (pi: ExtensionAPI) {
 					const timing = getAgentTiming(r);
 					text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)}${r.workType ? theme.fg("warning", ` · ${r.workType}`) : ""} ${rIcon}`;
 					if (timing) text += ` ${theme.fg("dim", timing.label)}`;
-					const commandLines = isCommandStage(r) ? renderCommandActions(r, 5) : "";
+					// Only the task still working shows its rows: a finished task is its header.
+					if (!taskShowsActions(r)) continue;
+					const commandLines = isCommandStage(r) ? renderCommandActions(r, STAGE_ACTION_COUNT) : "";
 					text += `\n${collapsedStageBody(
 						commandLines,
-						displayItems.length > 0 ? renderDisplayItems(displayItems, 5, getNestedRunMap(r)) : "",
+						displayItems.length > 0 ? renderDisplayItems(displayItems, STAGE_ACTION_COUNT, getNestedRunMap(r)) : "",
 						r.exitCode === -1,
 					)}`;
 				}
