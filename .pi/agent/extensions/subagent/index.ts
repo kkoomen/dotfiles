@@ -73,7 +73,7 @@ import {
 	getMarkdownTheme,
 	withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import { Container, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 import { HANDOFF_SCHEMA_VERSION, launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot, handoffRepairReason, resolvePlanLintContract } from "./workflow.mjs";
@@ -246,10 +246,13 @@ const RUN_STATUS_WIDGET = "run-status";
 /**
  * Run timer text: last in the widget, so it sits directly above the editor.
  *
- * One line while running (`<spinner frame> m:ss`) and one line once the run ends
- * (`m:ss` only, no spinner and no completion glyph).
+ * One line while running (`<spinner frame> m:ss`), and one line once the run ends (`m:ss`
+ * only, no spinner and no completion glyph). Both carry the prompt in gray right after the
+ * time, so the row reads `<spinner> 0:42 <prompt>`.
  */
 let runTimerLines: string[] | undefined;
+/** First line of the prompt that started the current/last run, shown in gray after the time. */
+let runTimerLabel = "";
 /** Wave table text: first in the widget, so it stays above the run timer. */
 let waveLines: string[] | undefined;
 /** UI handle the shared widget was last painted through (Pi's stable session UI context). */
@@ -316,11 +319,57 @@ function paintSpinnerFrame(ui: ExtensionContext["ui"], frame: string): string {
 	}
 }
 
+/** Gray text for the prompt label; plain text when no theme is reachable. */
+function paintMuted(ui: ExtensionContext["ui"], text: string): string {
+	try {
+		return ui.theme.fg("muted", text);
+	} catch {
+		return text;
+	}
+}
+
+/** Longest prompt label kept in memory so a huge paste costs nothing per tick. */
+const MAX_LABEL_CHARS = 400;
+
+/** First non-blank line of the prompt, whitespace squeezed. */
+function firstLine(text: string): string {
+	for (const raw of text.split(/\r?\n/)) {
+		const line = raw.replace(/\t/g, " ").replace(/ {2,}/g, " ").trim();
+		if (line.length > 0) return line;
+	}
+	return "";
+}
+
+/**
+ * Widest run timer row: 100 columns (`<spinner> <time> <gray prompt>`), and the terminal
+ * minus the 4 columns focus mode keeps as side padding only on a narrower terminal.
+ */
+function runTimerMaxWidth(): number {
+	const columns = process.stdout.columns ?? 120;
+	return columns >= 100 ? 100 : Math.max(20, columns - 4);
+}
+
+/** `<text> <gray prompt>`, cut to the row budget with an ellipsis. */
+function runTimerRow(ui: ExtensionContext["ui"], text: string): string {
+	const label = runTimerLabel ? ` ${paintMuted(ui, runTimerLabel)}` : "";
+	return truncateToWidth(`${text}${label}`, runTimerMaxWidth(), "…");
+}
+
+/** Remember the prompt for the timer row; steers and slash commands are not prompts. */
+function captureRunTimerLabel(event: { source?: string; text?: string; streamingBehavior?: string }): void {
+	if (event.source === "extension" || event.streamingBehavior === "steer") return;
+	const text = firstLine(event.text ?? "");
+	if (!text || text.startsWith("/")) return;
+	runTimerLabel = Array.from(text).slice(0, MAX_LABEL_CHARS).join("");
+}
+
 export function tickRunTimer() {
 	if (!runTimerUI || !runTimerStart) return;
 	const frame = RUN_SPINNER_FRAMES[runTimerFrame % RUN_SPINNER_FRAMES.length]!;
 	runTimerFrame += 1;
-	runTimerLines = [`${paintSpinnerFrame(runTimerUI, frame)} ${formatDuration(Date.now() - runTimerStart)}`];
+	runTimerLines = [
+		runTimerRow(runTimerUI, `${paintSpinnerFrame(runTimerUI, frame)} ${formatDuration(Date.now() - runTimerStart)}`),
+	];
 	paintRunStatus(runTimerUI);
 }
 
@@ -340,7 +389,7 @@ export function stopRunTimer() {
 	}
 	if (runTimerUI && runTimerStart) {
 		// Final state: the elapsed time alone. The spinner is gone and nothing replaces it.
-		runTimerLines = [formatDuration(Date.now() - runTimerStart)];
+		runTimerLines = [runTimerRow(runTimerUI, formatDuration(Date.now() - runTimerStart))];
 		paintRunStatus(runTimerUI);
 	}
 	runTimerStart = 0;
@@ -2738,6 +2787,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", async () => {
 		stopRunTimer();
 		clearWave();
+		runTimerLabel = "";
 		try {
 			runStatusUI?.setWidget(RUN_STATUS_WIDGET, undefined);
 		} catch {
@@ -2750,12 +2800,25 @@ export default function (pi: ExtensionAPI) {
 		runStatusUI = undefined;
 	});
 
+	// The run timer row above the editor carries the spinner, the elapsed time and the
+	// prompt, so Pi's own working row (which would show the prompt on a second line above
+	// it) is hidden for the session.
+	pi.on("session_start", async (_event, ctx) => {
+		if (!ctx.hasUI) return;
+		try {
+			ctx.ui.setWorkingVisible(false);
+		} catch {
+			/* no interactive surface */
+		}
+	});
+
 	// Forward an interactive steering message into every running subagent
 	// immediately. Pi delivers a steer only after the current tool call
 	// finishes; the `subagent` tool is one long call, so without this the steer
 	// would wait for the whole nested run. A steer that arrives over RPC from a
 	// parent is left to normal queueing here, so it reaches this session's agent.
 	pi.on("input", async (event, ctx) => {
+		captureRunTimerLabel(event);
 		if (event.source !== "interactive") return { action: "continue" };
 		if (event.streamingBehavior !== "steer") return { action: "continue" };
 		const notify = deliveryNotifierFor(ctx);
