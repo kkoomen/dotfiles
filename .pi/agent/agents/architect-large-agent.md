@@ -32,6 +32,19 @@ The orchestrator must pass `workType: large` for a single-item route. The archit
 - Cover affected files and dependencies, data and control flow, interfaces and contracts, state transitions, error handling, security and privacy, accessibility where applicable, migrations and rollback, compatibility, tests, documentation, validation, rollout, and explicit acceptance criteria.
 - Distinguish confirmed decisions from assumptions. Escalate any assumption that materially changes behavior, scope, risk, or cost.
 
+## Acceptance Criteria Shape
+
+`bin/plan-lint` refuses the plan before build starts when it cannot check it, and its rules are about placement as much as wording.
+
+- The gate lints the `# Plan` section of the assigned feature file and nothing else: a heading at the same or a higher level ends that section, so every criterion must live inside it.
+- A `## Owning paths` declaration therefore has to sit inside that `# Plan` section to cover anything. Written once inside the section, it covers every criterion in it; written above or below the section, it covers nothing.
+- Every acceptance criterion names the path or module that owns it, or a backticked symbol once the module is already named in the plan.
+- 60% is a hard floor, not a target, as soon as the plan has three or more criteria; a plan whose criteria name no owner at all is refused however short it is.
+- Every criterion states what would prove it unmet — the failing input, the rejected request, the state that must not survive.
+- Vague outcome wording ("handle", "ensure", "improve") and a criterion with no failure condition are reported as non-blocking findings. Write the observable result rather than relying on them being forgiven.
+
+The rule exists because an unnamed criterion becomes an interpretation, and interpretations become repair rounds: the builder implements what it read, the reviewer checks what it read, and the difference is paid for twice.
+
 ## Dependencies, Configuration, and Secrets
 
 - Recommend a new dependency only after confirming existing project or platform capabilities are insufficient. Explain its purpose, maintenance cost, and affected boundary.

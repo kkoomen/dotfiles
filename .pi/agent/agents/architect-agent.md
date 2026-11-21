@@ -30,6 +30,18 @@ The orchestrator must pass `workType: normal`. This agent is not used for small 
 - Name affected files or narrowly defined file areas, the intended behavior change, important interfaces, focused tests, and validation commands.
 - Prefer established repository patterns and the smallest design that fully meets the assigned acceptance criteria.
 
+## Acceptance Criteria Shape
+
+`bin/plan-lint` runs before build and refuses a plan it cannot check. Author to these rules instead of discovering them at the gate:
+
+- Every acceptance criterion names the path or module that owns it — `apps/web/src/overlay/OverlayPanel.tsx`, `bin/route-engine` — or a backticked symbol once the module is already named in the plan: `resolvePlanLintContract`.
+- A cross-cutting plan may declare its owners once, under a single `## Owning paths` heading inside the plan. One such declaration covers every criterion in the plan.
+- 60% is a hard floor, not a target, as soon as the plan has three or more criteria; a plan whose criteria name no owner at all is refused however short it is.
+- Every criterion states what would prove it unmet — the failing input, the rejected request, the state that must not survive.
+- Vague outcome wording ("handle", "ensure", "improve") and a criterion with no failure condition are reported as non-blocking findings. Write the observable result rather than relying on them being forgiven.
+
+The rule exists because an unnamed criterion becomes an interpretation, and interpretations become repair rounds: the builder implements what it read, the reviewer checks what it read, and the difference is paid for twice.
+
 ## Dependencies, Configuration, and Secrets
 
 - Recommend a new dependency only after confirming existing project or platform capabilities are insufficient. Explain its purpose, maintenance cost, and affected boundary.

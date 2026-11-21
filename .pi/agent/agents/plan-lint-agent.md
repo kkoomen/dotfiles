@@ -24,6 +24,10 @@ That is checkable in milliseconds.
 1. `contract.planFile` — a roadmap feature file; its `# Plan` section is used when present.
 2. `contract.plan` — plan text inline.
 
+A normal route's plan is lifted into `contract.plan` from the architect handoff summary before this
+command runs, and a dispatch carrying neither field is refused before it starts. A FAIL from here is
+therefore about the plan's shape, never about a plan that failed to arrive.
+
 ## Blocking
 
 - No plan, or a plan too short to carry criteria.
