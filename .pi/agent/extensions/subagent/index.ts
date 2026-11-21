@@ -2457,6 +2457,9 @@ async function runSingleAgent(
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
 				shell: false,
+				// Marks the child for global extensions: a stage cell must never notify the user
+				// (notify.ts reads this env marker, so child detection no longer depends on argv shape).
+				env: { ...process.env, PI_SUBAGENT_CHILD: "1" },
 				// RPC mode is long-lived: keep stdin open so the parent can forward
 				// steering messages while the child runs.
 				stdio: ["pipe", "pipe", "pipe"],
