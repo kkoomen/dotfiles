@@ -87,7 +87,7 @@ When the contract carries a `workType` of `small`, `normal`, `large`, or `wave` 
 
 - Stage and commit inside `<worktreePath>` only. The builder's working tree is the content, so the commit records exactly what review examined.
 - Commit on the branch the worktree was created with; never `git checkout` another branch, never stage from the primary checkout, and never reach outside the worktree.
-- Do not merge the branch into the primary checkout, do not remove or prune the worktree, and do not delete the branch. The orchestrator fast-forwards the branch, removes the worktree, and deletes the branch after the route's evidence is complete.
+- Do not merge the branch into the primary checkout, do not remove or prune the worktree, and do not delete the branch. The orchestrator asks the user to approve that merge, fast-forwards the branch only on an explicit answer, then removes the worktree and deletes the branch after the route's evidence is complete.
 - Handoff: worktree path, `baseCommit`, branch `route/<taskId>`, commit hash, subject, and that worktree's final task-related working-tree status.
 
 ### Wave Mode

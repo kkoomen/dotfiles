@@ -36,7 +36,7 @@ Implement only the assigned small fix or approved normal/large feature plan. Own
 When the contract carries `worktreePath`, that path is the whole assignment. That is every orchestrator dispatch: on a single-item route the branch is `route/<taskId>` and `baseCommit` is the recorded `<routeBase>`, and the rules below hold unchanged.
 
 - Run every read, write, test, and command inside the worktree. Never edit the primary checkout, another route's worktree, or a sibling item's worktree.
-- Never merge, rebase, cherry-pick, push, reset, or remove a worktree. The orchestrator owns worktree creation, the fast-forward merge or rolling assembly cherry-pick, and cleanup.
+- Never merge, rebase, cherry-pick, push, reset, or remove a worktree. The orchestrator owns worktree creation, the fast-forward merge or rolling assembly cherry-pick, and cleanup, and it asks the user for explicit approval before any of those history operations runs.
 - Confirm the item baseline that the orchestrator recorded at `baseCommit` before changing anything — the orchestrator records it when the route or round starts, you re-read it rather than redefining it — then run the item's own tests and the delta gate inside the worktree. A pre-existing failing test is not this item's defect: report it as baseline and leave it alone. New failures are yours.
 - Stop with `RECLASSIFY` if the change cannot be confined to the item's blast radius, or if it needs a hub file the planner attributed to another item.
 - Do not commit. Leave the work in the working tree; review diffs the worktree against `baseCommit`, and `commit-agent` creates the route's single commit afterwards.

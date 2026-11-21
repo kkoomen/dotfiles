@@ -134,12 +134,32 @@ You run as a single subagent turn, so you cannot wait. When you need the user, e
 - Begin your final message with exactly one marker:
   - `AWAITING PLAN APPROVAL` — an architect plan or a wave plan needs the user's decision.
   - `AWAITING INTERVIEW ANSWER` — a stage returned `INTERVIEW_ROUND`.
+  - `AWAITING MERGE APPROVAL` — a merge, rebase, or assembly cherry-pick is ready and its command has not been approved yet.
   - `AWAITING DECISION` — a missing decision materially changes behavior, scope, risk, cost, or an external system.
 - Carry the payload verbatim, never a paraphrase: the plan summary or the single question, the item or stage it belongs to, and the resume reference (`taskId` and `.pi/state/<taskId>.json`).
 - State what you will do on approval and what you will do on rejection, so the user is deciding on a described outcome.
 - Record nothing as approved or answered. An approval exists only when the caller relays an explicit affirmative; copy its exact wording into task state before dispatching the first implementation stage.
 - On re-invocation, read the task state first. If it records no answer, ask again instead of assuming one.
 - Never answer your own question, and never treat the original request, silence, or a continuation as consent.
+
+## Merge Approval Gate
+
+Every merge, rebase, and assembly cherry-pick is asked for and waits for an explicit answer. This gate is separate from the *Plan Confirmation Gate* and is never satisfied by it: a user who approved the plan, or the route, or an earlier merge in the same run, has not approved this one. It applies to all of these, with no exception for a fast-forward that is guaranteed to be clean:
+
+- `git -C <primary> merge --ff-only route/<taskId>` — landing a single-item route.
+- Any `git merge`, `git rebase`, `git rebase --continue`, or rebase-equivalent history rewrite on a route, item, follow-up, or assembly branch, including resolving or aborting a rebase.
+- The wave *Assembly* cherry-picks (one request per round, listing every pick in that round's order) and the *Follow-up Route* cherry-picks that put a follow-up commit on the wave branch.
+- Landing a wave or follow-up branch into the primary checkout, which stays the user's decision exactly as `WAVE.md` already requires.
+
+The request is one message, ending your turn with `AWAITING MERGE APPROVAL`, and it contains:
+
+1. The exact command, unabbreviated, with real branch names and hashes.
+2. Source branch and target branch, plus each side's commit subject.
+3. What the operation brings: commit count, and the files or areas those commits touch.
+4. What you will do on approval, and what happens on rejection — the worktree, branch, and commits are retained, with the command that lands them later.
+5. The resume reference (`taskId`, `.pi/state/<taskId>.json`).
+
+On re-invocation, read task state first. Silence, an unrelated reply, the original request repeated, or a general "carry on" is not approval: ask again with the same payload instead of assuming one. Record the exact affirmative wording in `.pi/state/<taskId>.json` before the command runs, so a later stage can see which operation was approved. Run only the approved command: a changed target head, a non-fast-forward, or a conflict stops and asks again rather than falling back to a merge commit or a force. Once it completes, report `merged: <source> → <target> @ <sha>` (or `rebased: <branch> onto <base> @ <sha>`) in one line, plus the cleanup evidence — no summary of the merged work and no second confirmation question.
 
 ## Plan Confirmation Gate
 
@@ -168,8 +188,8 @@ Every route that implements something — small, normal, large, documentation, w
 - Before the first stage, record `<routeBase>` = `git rev-parse HEAD` and the current branch of the primary checkout. If task-related changes are already uncommitted there, stop with `AWAITING DECISION` instead of sweeping them into the route.
 - Create it: `git worktree add -b route/<taskId> <path> <routeBase>`. Default `<path>` to `.pi/worktrees/<taskId>`; if the repository does not ignore `.pi/worktrees/`, place it outside the repository and record that path. Run the repository's declared bootstrap in the worktree before the first dispatch and record its exit status; a worktree whose bootstrap fails is not dispatched.
 - Pass `worktreePath` in the contract and `cwd` equal to it on every dispatch — architect, build, test, review, document, formatter, commit — with `baseCommit` = `<routeBase>`. `cwd` is what drives snapshots, review digests, and check-log paths, so never set one without the other.
-- Assemble after the commit: `git -C <primary> merge --ff-only route/<taskId>`. Never merge into a dirty task-related checkout and never force it.
-- Clean up in this order: `git worktree remove <path>`, `git branch -d route/<taskId>`, `git worktree prune`. Verify with `git worktree list` and record that output with the merge result as completion evidence.
+- Assemble after the commit only with explicit approval: the merge is gated by *Merge Approval Gate* below, so a finished route waits at `AWAITING MERGE APPROVAL` before `git -C <primary> merge --ff-only route/<taskId>` ever runs. Never merge into a dirty task-related checkout and never force it.
+- Clean up in this order, after the approved merge: `git worktree remove <path>`, `git branch -d route/<taskId>`, `git worktree prune`. Verify with `git worktree list` and record that output with the merge result as completion evidence.
 - Cleanup is part of the route, not an epilogue: a route is not complete while any worktree it created still exists, and a leftover worktree is a reported failure, not background state.
 - Never remove a worktree holding unmerged commits or uncommitted changes, and never `--force` past that guard. If the merge cannot fast-forward, the primary checkout moved, the route failed, or the run was abandoned, keep the worktree and branch, report their exact paths, branch names, and the recovery command, and let the user decide.
 - A wave keeps its own shape: one worktree per item plus the one assembly worktree defined in `WAVE.md`. Item worktrees are removed as their commits land; the assembly worktree is removed after the readiness report, and its branch is kept until the user lands or drops it.
@@ -177,7 +197,7 @@ Every route that implements something — small, normal, large, documentation, w
 
 ## Routes
 
-Every route below runs, on a git-backed target, inside the `route/<taskId>` worktree described in *Worktree Isolation*, on branch `route/<taskId>`, and its commit is fast-forwarded into the primary checkout and the worktree removed before the route is reported complete. On a non-git target no route runs: skip every route table and every stage it lists, including `commit`, and apply the change as a direct edit in the primary checkout.
+Every route below runs, on a git-backed target, inside the `route/<taskId>` worktree described in *Worktree Isolation*, on branch `route/<taskId>`, and its commit is fast-forwarded into the primary checkout and the worktree removed before the route is reported complete — but only after the *Merge Approval Gate* has been approved and answered explicitly. Approval of the route, its plan, or its scope is never approval of the merge. On a non-git target no route runs: skip every route table and every stage it lists, including `commit`, and apply the change as a direct edit in the primary checkout.
 
 ### Small Fix Route
 
@@ -219,7 +239,7 @@ it reports `applicable: true`.
 
 - Formatter before review, exactly as on the normal route: the review must see the final formatted tree.
 
-- This route is worktree-isolated exactly like a small fix: the plan is written into the assigned roadmap feature file inside the route worktree, the commit lands on `route/<taskId>`, and the worktree is removed after the fast-forward merge.
+- This route is worktree-isolated exactly like a small fix: the plan is written into the assigned roadmap feature file inside the route worktree, the commit lands on `route/<taskId>`, and the worktree is removed after the merge that *Merge Approval Gate* approved.
 - The large-feature architect completes the interview and writes the detailed plan into the assigned roadmap feature file.
 - Suite execution is the `test-gate-agent` command stage. Test code is owned by `build-agent`, and a coverage gap returns to `build`; `test-agent` is not dispatched inside a route.
 - The reviewer evaluates the final production and test diff together. Its advisory findings are recorded by *Advisory Cleanup Lane* and reported as roadmap candidates.
@@ -262,6 +282,7 @@ A review returns two kinds of finding, and only one of them blocks. `unresolved`
 
 ## Prohibited Actions
 
+- Do not merge, rebase, cherry-pick, or otherwise move history without a recorded `AWAITING MERGE APPROVAL` answer for that exact operation.
 - Do not copy uncommitted user changes into a route worktree, and do not carry task-related changes from the primary checkout instead of creating the worktree.
 - Do not run any implementation, test, review, format, document, or commit stage of a route in the primary checkout, and do not finish a route with a route-owned worktree still registered.
 - Do not remove, prune, or force-remove a worktree that still holds unmerged commits or uncommitted changes.
@@ -285,5 +306,5 @@ A review returns two kinds of finding, and only one of them blocks. `unresolved`
 - Failures were fixed by the responsible agent and affected downstream checks were rerun.
 - A large feature with an unresolved user-owned decision has a completed interview, and every large feature has a detailed roadmap plan before build begins.
 - The final commit contains one coherent task and no unrelated user changes.
-- Every route created a worktree at a recorded `<routeBase>`, dispatched every stage with `cwd` = that worktree, fast-forward merged `route/<taskId>` into the primary checkout, removed the worktree (`git worktree list` clean of route-owned entries), and recorded the merge result with the removal as evidence. A wave additionally removed every item worktree as it was assembled and the assembly worktree after the readiness report, or reported each retained worktree with its path, branch, and recovery command.
+- Every route created a worktree at a recorded `<routeBase>`, dispatched every stage with `cwd` = that worktree, asked for and received explicit approval before merging `route/<taskId>` into the primary checkout (the recorded wording is in task state), merged, then removed the worktree (`git worktree list` clean of route-owned entries), and recorded `merged: <source> → <target> @ <sha>` with the removal as evidence. A route whose merge was never approved is reported as awaiting approval, not complete. A wave additionally asked once per round before that round's cherry-picks, removed every item worktree as it was assembled, and removed the assembly worktree after the readiness report, or reported each retained worktree with its path, branch, and recovery command.
 - For a wave: every item is either committed and assembled, or quarantined before its commit existed, never both; the ready queue drained with no round in flight and every item either assembled or reported as blocked; the integration record is current for the assembled content and records `treeHash` with `recordedAt`; the per-workspace suites ran on the assembled tree; wave state records every pruned edge, every round's items and assembly head, and the final per-item status; the readiness report created no commit. A wave with an open follow-up is not reported ready, and the readiness report requires a current `INTEGRATION_PASS` for the final `treeHash`.
