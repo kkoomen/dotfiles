@@ -511,3 +511,139 @@ export function reviewSnapshot(cwd) {
   }
   return hash.digest('hex')
 }
+
+/**
+ * The plan a `plan-lint` dispatch is missing, resolved at the dispatch boundary.
+ *
+ * Measured defect: 31 of 65 `plan-lint` FAILs read "No plan reached plan-lint", every one of them
+ * on a normal route whose contract carried neither `planFile` nor `plan`, with a PASS
+ * `architect-agent` record sitting in `priorRecords` holding the whole plan in its handoff
+ * `summary`. The gate was right to refuse: nothing had handed it a plan. The planner had written
+ * one, and the dispatch dropped it.
+ *
+ * So the last moment before the gate runs resolves the plan from evidence that already exists:
+ * `priorRecords` only, nothing else, and no parsing of the plan itself. `bin/route-engine` performs
+ * the same resolution in `contractFor()` when it builds the contract; this is the second, independent
+ * construction point, for every dispatch that did not come from the engine. The two are deliberately
+ * separate copies — the engine must not import from this directory, because it is a symlink into the
+ * primary checkout there.
+ *
+ * Returns `{ contract, note }` with a NEW contract object, or `{ error }` naming why it refused.
+ * The caller's contract is never mutated and no record is written by this function. `note` is the
+ * human-readable provenance of the injected plan, for the caller's own reporting.
+ *
+ * The injected text is capped at 2000 characters with a `[truncated …]` marker naming the source
+ * directory, and prefixed with a `<!-- plan source: ... -->` line. A shortened plan must say that it
+ * is partial and where it came from, or the gate judges a fragment as if it were the whole plan.
+ * Both lines must stay inert to `bin/plan-lint`'s sentence heuristic: when a plan has no list form,
+ * the gate counts every chunk of at least 20 characters carrying an obligation verb
+ * (`must|should|returns?|renders?|rejects?|records?|shows?|hides?|fails?|never|instead`) as an
+ * acceptance criterion. A path ending in `record.json` matches `\brecords?\b`, so naming the record
+ * file handed a criteria-less plan a criterion and let it PASS; naming the directory it sits in
+ * keeps the trace without the token, and a trailing-slash path matches neither the gate's
+ * owning-path nor its backticked-symbol pattern. Any future rewording must keep both lines free of
+ * those verbs.
+ *
+ * A refusal names the way out, because it is a caller mistake rather than a plan defect:
+ *
+ * - a contract that already carries plan text or a plan file is returned untouched — an existing
+ *   source is the caller's decision, not something to improve on.
+ * - no usable prior record (unreadable, non-zero exit, flagged by validation, an errored or aborted
+ *   run, or an `architect-agent` summary that is blank) — the caller must pass the plan.
+ * - only a large-plan architect record (`architect-large-agent`, `architect-large-brisk-agent`),
+ *   whose summary points at the plan instead of carrying it — the plan is the assigned roadmap
+ *   feature file, so that file must arrive as `contract.planFile`. Scoring the pointer as a plan is
+ *   the defect this refusal exists to prevent.
+ */
+const PLAN_TEXT_CAP = 2000
+
+const planTextOf = (value) => (typeof value === 'string' && value.trim() ? value.trim() : '')
+
+/**
+ * Inline plan text lifted from a handoff summary: capped with the same marker the engine uses, and
+ * prefixed with the provenance comment. Both the comment and the marker name the source by its
+ * containing directory, never by the record file name, and neither carries an obligation verb:
+ * `bin/plan-lint` splits an unstyled plan into sentences when it finds no list form, and a chunk of
+ * at least 20 characters with one of those verbs (`must|should|returns?|renders?|rejects?|records?|
+ * shows?|hides?|fails?|never|instead`) is scored as an acceptance criterion. `record.json` matches
+ * `\brecords?\b`, which is exactly how the first version of this line gave a criteria-less plan a
+ * criterion. Reword only within that vocabulary.
+ */
+function inlinePlanFromSummary(summary, source) {
+  const text = planTextOf(summary)
+  if (!text) return null
+  const directory = `${path.dirname(source)}/`
+  const capped =
+    text.length <= PLAN_TEXT_CAP
+      ? text
+      : `${text.slice(0, PLAN_TEXT_CAP)}\n\n[truncated at ${PLAN_TEXT_CAP} characters; full plan in ${directory}]`
+  return `<!-- plan source: architect handoff summary, ${directory} -->\n${capped}`
+}
+
+/** A prior record is usable evidence only when it ran cleanly and reported no validation failure. */
+const priorRecordRejection = (record) => {
+  if (!record || typeof record !== 'object') return 'empty record'
+  if (record.validationError) return `validation error: ${String(record.validationError).slice(0, 200)}`
+  if (record.exitCode !== 0) return `exit code ${record.exitCode}`
+  if (record.stopReason === 'error' || record.stopReason === 'aborted') return `run ended with ${record.stopReason}`
+  return null
+}
+
+const LARGE_PLAN_AGENTS = new Set(['architect-large-agent', 'architect-large-brisk-agent'])
+
+export function resolvePlanLintContract(contract, readRecord = (file) => JSON.parse(readFileSync(file, 'utf8'))) {
+  if (!contract || typeof contract !== 'object') return { error: 'plan-lint needs a contract; none was supplied' }
+  // A plan the caller already has is the caller's decision, not something to improve on.
+  if (planTextOf(contract.plan) || planTextOf(contract.planFile)) return { contract, note: null }
+
+  const records = Array.isArray(contract.priorRecords) ? contract.priorRecords : []
+  const rejected = []
+  let reference = null
+
+  for (let index = records.length - 1; index >= 0; index--) {
+    const file = records[index]
+    if (typeof file !== 'string' || !file) continue
+    let record
+    try {
+      record = readRecord(file)
+    } catch (error) {
+      rejected.push(`${file} (unreadable: ${String(error && error.message ? error.message : error).slice(0, 120)})`)
+      continue
+    }
+    const rejection = priorRecordRejection(record)
+    if (rejection) {
+      rejected.push(`${file} (${rejection})`)
+      continue
+    }
+    if (LARGE_PLAN_AGENTS.has(record.agent)) {
+      // A large-plan architect writes the plan into the roadmap feature file and keeps only a
+      // pointer in its summary. Scoring that pointer as a plan is the defect this must not repeat.
+      reference ??= file
+      continue
+    }
+    if (record.agent !== 'architect-agent') continue
+    const output = typeof record.output === 'string' ? record.output : ''
+    const summary = planTextOf(parseReport(output)?.summary)
+    if (!summary) {
+      rejected.push(`${file} (architect handoff summary is empty)`)
+      continue
+    }
+    const plan = inlinePlanFromSummary(summary, file)
+    return {
+      contract: { ...contract, plan },
+      note: `plan-lint plan lifted from the architect handoff summary in ${file}${summary.length > PLAN_TEXT_CAP ? ` (capped at ${PLAN_TEXT_CAP} characters)` : ''}`,
+    }
+  }
+
+  if (reference) {
+    return {
+      error: `plan-lint has no plan text: ${reference} is a large-plan architect record, whose summary points at the plan rather than carrying it. The plan lives in the assigned roadmap feature file; pass that file as contract.planFile.`,
+    }
+  }
+  const because = rejected.length
+    ? ` No prior architect record supplied a plan: ${rejected.join('; ')}.`
+    : ' No prior architect record supplied a plan.'
+  return {
+    error: `plan-lint needs a plan and the contract carries neither contract.plan nor contract.planFile.${because} Pass the plan text as contract.plan, or the plan file (never a roadmap index, never a run record) as contract.planFile.`,
+  }
+}

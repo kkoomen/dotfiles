@@ -33,3 +33,11 @@ reclassifying or reducing the item instead of buying another cheap attempt.
 - Never widens scope to make the item easier; return `REPLAN_REQUIRED` instead.
 - Returns `PLAN_READY` with the plan stored in the assigned roadmap feature file, exactly as the
   large architect does.
+- Never writes acceptance criteria that fail the shape `bin/plan-lint` enforces: every criterion names
+  the path or module that owns it, or a backticked symbol once the module is named; 60% of criteria
+  must name an owner once there are three or more, and a plan whose criteria name no owner at all is
+  refused; a single `## Owning paths` heading written inside the `# Plan` section covers all of them,
+  and outside that section it covers none; every criterion states what would prove it unmet. Vague
+  wording and a missing failure condition are findings, not failures, and the reason the rule is
+  strict is that an unnamed criterion becomes an interpretation, and interpretations become repair
+  rounds.

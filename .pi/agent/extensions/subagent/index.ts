@@ -76,7 +76,7 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
-import { HANDOFF_SCHEMA_VERSION, launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot, handoffRepairReason } from "./workflow.mjs";
+import { HANDOFF_SCHEMA_VERSION, launchOptions, finalText, semanticFailure, validateContract, validateReport, validateCheckEvidence, validatePriorRecords, codeSnapshot, reviewedFileDigests, reviewSnapshot, handoffRepairReason, resolvePlanLintContract } from "./workflow.mjs";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 8;
@@ -2305,6 +2305,35 @@ async function runSingleAgent(
 			startedAt: 0,
 			nestedSubagents: [],
 		};
+	}
+
+	/**
+	 * A plan-lint dispatch must arrive with a plan, or it costs a record that says nothing about the
+	 * plan. Resolve one from `priorRecords` first and refuse before the command stage runs: a gate
+	 * that never ran produced no FAIL, so no route is rewound over a contract its caller dropped.
+	 * The enrichment goes to the command path and to the model prompt alike.
+	 */
+	if (agent.handoff === true && contract && agent.name === "plan-lint-agent") {
+		const resolved = resolvePlanLintContract(contract);
+		if (resolved.error) {
+			return {
+				agent: agent.name,
+				agentSource: agent.source,
+				task,
+				workType: contract.workType,
+				itemId: contract.itemId,
+				waveId: contract.waveId,
+				exitCode: 1,
+				messages: [],
+				stderr: resolved.error,
+				validationError: resolved.error,
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+				step,
+				startedAt: 0,
+				nestedSubagents: [],
+			};
+		}
+		contract = resolved.contract;
 	}
 
 	if (agent.command) {
