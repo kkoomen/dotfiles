@@ -5,9 +5,20 @@
  *
  *   ~/.pi/pi-task-done.mp3    every completed task (agent_settled, not aborted)
  *   ~/.pi/pi-need-input.mp3   Pi forwards a request for input or approval:
- *                             - final assistant message opens with one of the
- *                               AWAITING ... status tokens, or
+ *                             - the final assistant message carries one of the
+ *                               AWAITING ... status markers, or
  *                             - a blocking extension UI prompt opens.
+ *
+ * The markers are the ones the agent prompts require at ~/.pi/agent/agents/*.md
+ * (AWAITING PLAN APPROVAL, AWAITING INTERVIEW ANSWER, AWAITING MERGE APPROVAL,
+ * AWAITING DECISION). They are checked anywhere in the message, not only as a
+ * prefix, because the main thread relays a suspended orchestrator: it opens with
+ * its own line and the marker follows ("Orchestrator returned `AWAITING PLAN
+ * APPROVAL`. Relaying verbatim:"). An occurrence counts as a marker when it
+ * starts a line (after markdown decoration) or stands fully decorated (`...`,
+ * `**...**`) and is followed by the end of that line or by sentence punctuation.
+ * A marker quoted mid-sentence, or quoted and followed by a comma as in prose
+ * that merely names the tokens, is not a request.
  *
  * Every sound is paired with one macOS notification, so a run that chimes while
  * the terminal is behind another window still says what happened:
@@ -104,12 +115,18 @@ const BODY_NEEDS_MERGE_APPROVAL = "Merge needs approval";
 const BODY_NEEDS_INPUT = "Waiting for input";
 const BODY_DONE = "Implementation done";
 
-const AWAITING_PREFIXES = [
+/**
+ * Status markers the agent prompts require when Pi needs the user. Kept in sync
+ * with ~/.pi/agent/agents/ and asserted against those files by
+ * ~/.pi/checks/notify/notify-logic.ts, so adding a marker cannot silently stop
+ * the need-input clip from firing.
+ */
+export const AWAITING_TOKENS = [
   "AWAITING PLAN APPROVAL",
   "AWAITING INTERVIEW ANSWER",
   "AWAITING MERGE APPROVAL",
   "AWAITING DECISION",
-];
+] as const;
 
 const ACT_ON_BEHALF_PHRASES = [
   "act on my behalf",
@@ -120,19 +137,76 @@ const ACT_ON_BEHALF_PHRASES = [
 
 /** Leading whitespace plus markdown decoration that can precede a status token. */
 const LEADING_DECORATION = /^[\s*_`#>~-]+/;
+/** Markdown emphasis/code wrappers that may sit immediately around a marker. */
+const WRAPPER_CHARS = "*_`";
+/** What may follow a marker: end of line/text, or the punctuation of a status line. */
+const MARKER_TERMINATOR = /^(?:[ \t]*$|[ \t]*[.!:\u2014\u2013\n])/;
+/**
+ * Wording that quotes a marker in prose instead of emitting it: "it fires when
+ * the message starts with `AWAITING DECISION`". A marker on such a line is
+ * documentation, not a request.
+ */
+const QUOTING_PROSE =
+  /(?:starts?|begins?|ends?|described)\s+with\b|\bsuch as\b|\blike\b|\be\.g\.|\bi\.e\.|\bincluding\b|\bone of\b/i;
 
 /** Trim, then strip one leading run of whitespace/markdown decoration. */
 export function normalizeFinalText(text: string): string {
   return text.trim().replace(LEADING_DECORATION, "");
 }
 
+/** True when only whitespace and markdown decoration precede this offset. */
+function startsLine(text: string, offset: number): boolean {
+  const before = text.slice(0, offset);
+  const lineStart = before.lastIndexOf("\n") + 1;
+  return normalizeFinalText(before.slice(lineStart)) === "";
+}
+
+/** Strip the markdown wrappers that close a marker, returning what follows them. */
+function afterWrappers(text: string): string {
+  let i = 0;
+  while (i < text.length && WRAPPER_CHARS.includes(text[i])) i++;
+  return text.slice(i);
+}
+
+/** True when the marker at `offset` is wrapped in markdown on both sides. */
+function isDecorated(text: string, offset: number, end: number): boolean {
+  const before = text.slice(0, offset);
+  const open = /[*_`]+\s*$/.exec(before);
+  if (!open) return false;
+  return afterWrappers(text.slice(end)).length < text.slice(end).length;
+}
+
 /**
- * True when the final assistant text forwards a request to the user. Case
- * sensitive prefix test: a status token quoted mid-message is not a request.
+ * The status marker the final assistant text carries, or undefined when it
+ * forwards no request. Case sensitive, so prose about the markers does not count
+ * unless it quotes one as a status line.
+ */
+export function findStatusToken(finalText: string): string | undefined {
+  for (const token of AWAITING_TOKENS) {
+    let from = 0;
+    for (;;) {
+      const at = finalText.indexOf(token, from);
+      if (at < 0) break;
+      from = at + token.length;
+      const end = at + token.length;
+      const tail = afterWrappers(finalText.slice(end));
+      if (!MARKER_TERMINATOR.test(tail)) continue;
+      const lineStart = finalText.lastIndexOf("\n", at - 1) + 1;
+      if (QUOTING_PROSE.test(finalText.slice(lineStart, at))) continue;
+      if (startsLine(finalText, at)) return token;
+      if (isDecorated(finalText, at, end)) return token;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * True when the final assistant text forwards a request to the user. Any marker
+ * occurrence counts, not only a leading one: the main thread relays a suspended
+ * orchestrator behind its own opening line.
  */
 export function shouldPlayNeedInput(finalText: string): boolean {
-  const normalized = normalizeFinalText(finalText);
-  return AWAITING_PREFIXES.some((prefix) => normalized.startsWith(prefix));
+  return findStatusToken(finalText) !== undefined;
 }
 
 /**
@@ -140,9 +214,9 @@ export function shouldPlayNeedInput(finalText: string): boolean {
  * from a general decision/question, both distinct from plain completion.
  */
 export function awaitingBody(finalText: string): string {
-  const normalized = normalizeFinalText(finalText);
-  if (normalized.startsWith("AWAITING PLAN APPROVAL")) return BODY_NEEDS_APPROVAL;
-  if (normalized.startsWith("AWAITING MERGE APPROVAL")) return BODY_NEEDS_MERGE_APPROVAL;
+  const token = findStatusToken(finalText);
+  if (token === "AWAITING PLAN APPROVAL") return BODY_NEEDS_APPROVAL;
+  if (token === "AWAITING MERGE APPROVAL") return BODY_NEEDS_MERGE_APPROVAL;
   return BODY_NEEDS_INPUT;
 }
 
