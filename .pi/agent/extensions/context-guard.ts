@@ -74,10 +74,9 @@ interface StageUse {
 }
 
 /**
- * Large-monorepo profile. Budgets sit above the observed healthy averages for
- * the heaviest stages on a furemu-sized repo (build ~7M/54 turns, test
- * ~2.7M/36, orchestrator ~3.6M/41), so a normal stage passes and only a
- * runaway is called out.
+ * Large-monorepo profile. Budgets sit above the observed healthy averages for the
+ * heaviest stages across ~10k recorded runs (build ~36 turns, code review ~28,
+ * orchestrator ~37), so a normal stage passes and only a runaway is called out.
  */
 const DEFAULTS: GuardConfig = {
   enabled: true,
@@ -85,7 +84,9 @@ const DEFAULTS: GuardConfig = {
   writeExistingMaxLines: 1200,
   subagentMaxBytes: 32 * 1024,
   stageTokenBudget: 15_000_000,
-  stageTurnBudget: 80,
+  // Warning only, never enforced: a stage past this many turns gets a note appended to its
+  // result. Nothing is killed and nothing is refused.
+  stageTurnBudget: 120,
   // warnOnly=true never blocks (the write guard becomes advisory); false enforces.
   warnOnly: false,
 };
@@ -249,7 +250,7 @@ function shedReport(body: string, maxBytes: number): string | undefined {
       }
     }
     for (const finding of findings) {
-      for (const key of ["message", "failureScenario", "failure", "detail", "correction", "fix"]) {
+      for (const key of ["message", "scenario", "failureScenario", "failure", "detail", "correction", "fix"]) {
         if (typeof finding[key] === "string" && (finding[key] as string).length > limits.finding) {
           finding[key] = trimStr(finding[key], limits.finding);
         }
@@ -471,6 +472,22 @@ export default function (pi: ExtensionAPI) {
       const totalTurns = sessionStages.reduce((n, s) => n + s.turns, 0);
       const over = sessionStages.filter((s) => s.overBudget);
       const projectPath = join(ctx.cwd, ".pi", "context-guard.json");
+      // The launcher keeps month-to-date spend beside the run records purely for accounting.
+      // There is no cap: nothing is refused or interrupted because of this number.
+      const spendLine = (() => {
+        try {
+          const ledger = JSON.parse(readFileSync(join(getAgentDir(), "runs", ".spend.json"), "utf8"));
+          const month = new Date().toISOString().slice(0, 7);
+          const spent = Number(ledger?.[month] ?? 0);
+          const all = Object.entries(ledger ?? {})
+            .filter(([key]) => key !== month)
+            .map(([key, value]) => `${key} $${Number(value).toFixed(2)}`)
+            .join(", ");
+          return `This month (${month}): $${spent.toFixed(2)} (no cap)${all ? `  ·  ${all}` : ""}`;
+        } catch {
+          return "This month: no spend ledger yet (runs/.spend.json)";
+        }
+      })();
       const lines = [
         `context-guard: ${config.enabled ? "enabled" : "disabled"} (large-monorepo profile)`,
         `  readMaxLines=${config.readMaxLines}  writeExistingMaxLines=${config.writeExistingMaxLines}  warnOnly=${config.warnOnly}`,
@@ -479,6 +496,7 @@ export default function (pi: ExtensionAPI) {
         `  project: ${projectPath}${existsSync(projectPath) ? "" : " (absent)"}`,
         `  env overrides apply last; see PI_GUARD_*`,
         "",
+        spendLine,
         `This session: ${sessionStages.length} stages, ${totalTokens.toLocaleString()} tokens, ${totalTurns} turns, $${totalCost.toFixed(4)}`,
       ];
       if (over.length > 0) {

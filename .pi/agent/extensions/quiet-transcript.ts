@@ -8,61 +8,93 @@ import {
   createReadToolDefinition,
   createWriteToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, MouseRegion, truncateToWidth, wrapTextWithAnsi, type Component } from "@earendil-works/pi-tui";
 
 /**
  * Quiet transcript — display-only. Does NOT change what the model does or says.
  *
  * Replaces the built-in rendering of every tool (bash, read, edit, write, grep,
- * find, ls) with one-line bullets:
+ * find, ls) with one row per call:
  *
- *     ▸ bash $ sed -n '1,20p' src/main.ts
- *     ✓ bash
+ *     ⠸ bash $ sed -n '1,20p' src/main.ts
+ *     ✓ bash $ sed -n '1,20p' src/main.ts
  *
- * Tool call arguments and tool output are hidden from the transcript. The
- * output of the most recent tool call — the one currently running, or the
- * last one that ran — can be shown/hidden with ctrl+h. Only that single row
- * toggles; previously generated rows stay collapsed forever. While a tool is
- * still streaming, expanding it shows its live partial output.
+ * The marker walks the run-timer spinner while the tool runs and settles on a
+ * green check when it succeeds or a red cross when it errors (non-zero exit
+ * code, tool failure, cancellation). The preview after the tool name is always
+ * exactly one line: newlines, tabs and runs of whitespace collapse to single
+ * spaces, and the whole row is truncated to the terminal width, so a multi-line
+ * command can never break the row.
  *
- * On startup/resume, the output of the last tool call in the restored
- * transcript is revealed automatically so the session picks up where it left
- * off; ctrl+h still collapses it again. Execution is 100% delegated to the
- * built-in implementations, so behavior and session history are unchanged.
+ * Clicking a row expands it: the whole command on one or more wrapped lines,
+ * untruncated, then that command's output below it. A command that produced no
+ * output says so in italic muted text instead of leaving a blank gap. Clicking
+ * again collapses it; ctrl+h does the same for the most recent call. While a
+ * tool is still streaming, expanding it shows its live partial output.
+ *
+ * On startup/resume, the last tool call in the restored transcript is revealed
+ * automatically so the session picks up where it left off.
+ *
+ * Execution is 100% delegated to the built-in implementations, so behavior and
+ * session history are unchanged.
  */
 
 const CWD = process.cwd();
+
+/** Longest argument preview kept, before width truncation. */
+const PREVIEW_MAX = 72;
+
+/**
+ * Spinner frames and cadence: the same dot spinner and 100ms tick the subagent
+ * extension's run timer uses, so every animated row in the session matches.
+ */
+const SPINNER_FRAMES = ["⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "⠋", "⠙", "⠹", "⠸"];
+const SPINNER_INTERVAL_MS = 100;
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, Math.max(0, max - 1)) + "…";
 }
 
+/**
+ * Collapse any text to a single line: every run of whitespace (newlines, tabs,
+ * CR, indentation) becomes one space. Keeps a multi-line bash command or a path
+ * with odd whitespace from ever adding a line to the row.
+ */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** Current spinner frame, derived from the clock so parallel rows stay in sync. */
+function spinnerFrame(): string {
+  return SPINNER_FRAMES[Math.floor(Date.now() / SPINNER_INTERVAL_MS) % SPINNER_FRAMES.length]!;
+}
+
 /** One-line summary of a tool call's arguments. */
 function summarizeCall(name: string, args: any): string {
   switch (name) {
     case "bash":
-      return `$ ${truncate(args?.command ?? "", 60)}`;
+      return args?.command ? `$ ${args.command}` : "";
     case "read":
-      return truncate(args?.path ?? "", 70);
+      return args?.path ?? "";
     case "edit": {
       const n = args?.edits?.length ?? 0;
-      return `${truncate(args?.path ?? "", 50)} (${n} edit${n === 1 ? "" : "s"})`;
+      return `${args?.path ?? ""} (${n} edit${n === 1 ? "" : "s"})`;
     }
     case "write":
-      return truncate(args?.path ?? "", 70);
+      return args?.path ?? "";
     case "grep": {
-      let s = truncate(args?.pattern ?? "", 40);
-      if (args?.path) s += ` in ${truncate(args.path, 30)}`;
+      let s = args?.pattern ?? "";
+      if (args?.path) s += ` in ${args.path}`;
       return s;
     }
     case "find": {
-      let s = truncate(args?.pattern ?? "", 40);
-      if (args?.path) s += ` in ${truncate(args.path, 30)}`;
+      let s = args?.pattern ?? "";
+      if (args?.path) s += ` in ${args.path}`;
       return s;
     }
     case "ls":
-      return truncate(args?.path ?? ".", 70);
+      return args?.path ?? ".";
     default:
       return "";
   }
@@ -76,6 +108,33 @@ function resultText(content: any): string {
     .join("\n");
 }
 
+/**
+ * One tool row: a header that is a single visual line when collapsed and wraps
+ * when expanded, plus the body lines of the expanded view.
+ */
+class ToolRow implements Component {
+  constructor(
+    private readonly head: string,
+    private readonly body: string[],
+    private readonly wrapHead: boolean,
+  ) {}
+
+  render(width: number): string[] {
+    const safeWidth = Math.max(1, width);
+    const lines = this.wrapHead
+      ? wrapTextWithAnsi(this.head, safeWidth)
+      : [truncateToWidth(this.head, safeWidth, "…")];
+    for (const line of this.body) {
+      lines.push(...wrapTextWithAnsi(line, safeWidth));
+    }
+    return lines;
+  }
+
+  invalidate(): void {
+    // Nothing cached: the row is built from scratch on every render.
+  }
+}
+
 const builtinDefinitions: ToolDefinition<any, any, any>[] = [
   createBashToolDefinition(CWD),
   createReadToolDefinition(CWD),
@@ -87,16 +146,43 @@ const builtinDefinitions: ToolDefinition<any, any, any>[] = [
 ];
 
 export default function (pi: ExtensionAPI): void {
-  // The most recent tool call is the only one ctrl+h affects.
+  /** Most recent tool call, targeted by ctrl+h. */
   let activeCallId: string | null = null;
-  let activeExpanded = false;
-  let activeInvalidate: (() => void) | null = null;
+
+  /** Tool calls whose output is currently shown. */
+  const expanded = new Set<string>();
 
   // Set on startup/resume until the last restored tool row has been revealed.
   let pendingStartupToolCallId: string | null = null;
-  // Invalidators for already-rendered tool rows, so a reveal can force a re-render.
-  const renderedInvalidates = new Map<string, () => void>();
-  const MAX_RENDERED_INVALIDATES = 500;
+
+  /** Per-row invalidators, so a click or reveal can force a re-render. */
+  const rowInvalidates = new Map<string, () => void>();
+  const MAX_TRACKED_ROWS = 500;
+
+  /** Rows still streaming; the ticker repaints them so their spinner animates. */
+  const runningRows = new Set<string>();
+  let ticker: ReturnType<typeof setInterval> | null = null;
+
+  /** Start/stop the shared spinner ticker as running rows come and go. */
+  function syncTicker(): void {
+    if (runningRows.size > 0) {
+      if (ticker) return;
+      ticker = setInterval(() => {
+        for (const id of runningRows) rowInvalidates.get(id)?.();
+      }, SPINNER_INTERVAL_MS);
+      return;
+    }
+    if (ticker) {
+      clearInterval(ticker);
+      ticker = null;
+    }
+  }
+
+  function toggleExpanded(toolCallId: string): void {
+    if (expanded.has(toolCallId)) expanded.delete(toolCallId);
+    else expanded.add(toolCallId);
+    rowInvalidates.get(toolCallId)?.();
+  }
 
   /** Last tool result in the restored transcript, if any. */
   function findLastToolResultId(ctx: ExtensionContext): string | null {
@@ -112,8 +198,10 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_start", (event, ctx) => {
     activeCallId = null;
-    activeExpanded = false;
-    activeInvalidate = null;
+    expanded.clear();
+    rowInvalidates.clear();
+    runningRows.clear();
+    syncTicker();
     pendingStartupToolCallId = event.reason === "new" ? null : findLastToolResultId(ctx);
     if (!pendingStartupToolCallId) return;
 
@@ -121,33 +209,36 @@ export default function (pi: ExtensionAPI): void {
     const id = pendingStartupToolCallId;
     setTimeout(() => {
       if (pendingStartupToolCallId !== id) return;
-      const invalidate = renderedInvalidates.get(id);
+      const invalidate = rowInvalidates.get(id);
       if (!invalidate) return;
       pendingStartupToolCallId = null;
-      activeCallId = id;
-      activeExpanded = true;
-      activeInvalidate = invalidate;
+      expanded.add(id);
       invalidate();
     }, 0);
+  });
+
+  pi.on("session_shutdown", () => {
+    runningRows.clear();
+    syncTicker();
   });
 
   pi.registerShortcut("ctrl+h", {
     description: "Show/hide the current tool call's output",
     handler: () => {
       if (!activeCallId) return;
-      activeExpanded = !activeExpanded;
-      activeInvalidate?.();
+      toggleExpanded(activeCallId);
     },
   });
 
   pi.on("tool_execution_start", (event) => {
-    // A new call becomes the active one; collapse the previous row if it was
-    // showing output so only the current command is ever expanded.
-    const collapsePrevious = activeExpanded ? activeInvalidate : null;
     activeCallId = event.toolCallId;
-    activeExpanded = false;
-    activeInvalidate = null;
-    collapsePrevious?.();
+  });
+
+  // Safety net: a call that ends without a final (non-partial) render must not
+  // keep the ticker alive forever.
+  pi.on("tool_execution_end", (event) => {
+    runningRows.delete(event.toolCallId);
+    syncTicker();
   });
 
   for (const tool of builtinDefinitions) {
@@ -158,51 +249,69 @@ export default function (pi: ExtensionAPI): void {
       // result shape, session details — identical behavior.
       ...tool,
 
-      renderCall(args, theme, context) {
-        const summary = summarizeCall(name, args);
-        const label = theme.fg("muted", `▸ ${name}`);
-        const detail = summary ? " " + theme.fg("dim", summary) : "";
-        return new Text(label + detail, 0, 0);
+      // The whole row is rendered by renderResult (spinner → check, preview,
+      // output), so the call slot stays empty: one visible line per call.
+      renderCall() {
+        return new Container();
       },
 
       renderResult(result, options, theme, context) {
-        if (!options.isPartial) {
-          if (renderedInvalidates.size >= MAX_RENDERED_INVALIDATES) {
-            const oldest = renderedInvalidates.keys().next().value;
-            if (oldest !== undefined) renderedInvalidates.delete(oldest);
+        const id = context.toolCallId;
+
+        // Untracked rows are pruned oldest-first; never drop a row that is
+        // still streaming, or its spinner would freeze.
+        if (rowInvalidates.size >= MAX_TRACKED_ROWS && !rowInvalidates.has(id)) {
+          for (const key of rowInvalidates.keys()) {
+            if (!runningRows.has(key)) {
+              rowInvalidates.delete(key);
+              break;
+            }
           }
-          renderedInvalidates.set(context.toolCallId, context.invalidate);
+        }
+        rowInvalidates.set(id, context.invalidate);
+
+        if (options.isPartial) {
+          runningRows.add(id);
+        } else {
+          runningRows.delete(id);
 
           // Reveal the last restored tool row once it renders on startup/resume.
-          if (context.toolCallId === pendingStartupToolCallId) {
+          if (id === pendingStartupToolCallId) {
             pendingStartupToolCallId = null;
-            activeCallId = context.toolCallId;
-            activeExpanded = true;
+            expanded.add(id);
           }
         }
+        syncTicker();
 
-        const isActive = context.toolCallId === activeCallId;
-        if (isActive) {
-          activeInvalidate = context.invalidate;
+        const isExpanded = expanded.has(id);
+        // Collapsed: one clipped line. Expanded: the command exactly as it was
+        // given, newlines and all, so nothing is hidden by truncation.
+        const raw = summarizeCall(name, context.args);
+        const summary = isExpanded ? raw.replace(/\s+$/, "") : truncate(oneLine(raw), PREVIEW_MAX);
+        const marker = options.isPartial
+          ? theme.fg("accent", spinnerFrame())
+          : theme.fg(context.isError ? "error" : "success", context.isError ? "✗" : "✓");
+        const label = summary
+          ? `${marker} ${theme.fg("muted", name)} ${theme.fg("dim", summary)}`
+          : `${marker} ${theme.fg("muted", name)}`;
+
+        const body: string[] = [];
+        if (isExpanded) {
+          const output = resultText(result.content).replace(/\s+$/, "");
+          if (output) body.push(...output.split("\n"));
+          // Say so explicitly rather than leaving an empty gap under the command.
+          // Withheld while streaming: the output may simply not have arrived yet.
+          else if (!options.isPartial) body.push(theme.italic(theme.fg("dim", "no output")));
         }
-        const expanded = isActive && activeExpanded;
-        const text = expanded ? resultText(result.content) : "";
+        const row = new ToolRow(label, body, isExpanded);
 
-        // Streaming: show the live partial output when the current call is expanded.
-        if (options.isPartial) {
-          const line = theme.fg("dim", `… ${name}`);
-          return new Text(expanded && text ? `${line}\n${text}` : line, 0, 0);
-        }
-
-        // Expanded (ctrl+h): show the raw output of the active call.
-        if (expanded) {
-          const head = theme.fg(context.isError ? "error" : "success", `${context.isError ? "✗" : "✓"} ${name}`);
-          return new Text(text ? `${head}\n${text}` : head, 0, 0);
-        }
-
-        // Collapsed default: one status bullet, no output.
-        const color = context.isError ? "error" : "success";
-        return new Text(theme.fg(color, `${context.isError ? "✗" : "✓"} ${name}`), 0, 0);
+        // Click toggles this row's output. Handled here so Pi's own row-wide
+        // expand toggle does not also fire and fight this state.
+        return new MouseRegion(row, (event) => {
+          if (event.type !== "click" || event.button !== "left") return undefined;
+          toggleExpanded(id);
+          return { handled: true };
+        });
       },
     });
   }
