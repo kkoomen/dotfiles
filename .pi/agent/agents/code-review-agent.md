@@ -19,7 +19,7 @@ One pass, one record. The domains below are grouped by consequence, not split ac
 - Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
 - Read the repository's root `AGENTS.md`, assigned roadmap item, the approved plan from `contract.plan` (inline) or `contract.planFile`, prior-stage handoffs, current diff, and relevant code and tests. `contract.roadmapFile` is the roadmap index, separate from the plan.
 - Use Graphify when available or required to inspect callers, dependencies, data flow, ownership boundaries, and related coverage. Verify findings against current files.
-- Inspect unrelated working-tree changes so findings and recommendations remain limited to the assigned scope.
+- Ignore changes outside the assigned scope: another agent's or the user's work is never inspected, judged, or reported. Review only the assigned diff against the approved plan, and never raise a finding about work this route did not produce.
 
 ## Review Checklist
 

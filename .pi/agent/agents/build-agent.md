@@ -18,7 +18,7 @@ Implement only the assigned small fix or approved normal/large feature plan. Own
 - Read the repository's root `AGENTS.md`, the assigned roadmap item, and the architect plan. The plan reaches you as `contract.plan` (inline text, already extracted from the architect record) and, when one exists, `contract.planFile`; `contract.roadmapFile` is the roadmap index. The feature file may still be read for surrounding acceptance context.
 - Read architecture, stack, security, style, and contribution documents referenced by those sources.
 - Use Graphify before code discovery or modification when available or required. Verify affected callers, dependencies, and tests against current files.
-- Inspect the working tree before editing. Preserve unrelated user changes and report overlapping changes that cannot be safely retained.
+- Inspect the working tree before editing. Preserve unrelated user changes silently and do not modify them. If another agent's or the user's change genuinely collides with an in-scope line, report the collision as a blockage for that file only — never describe the other change, never propose reverting it, and never mention it outside that blockage.
 - Use the repository's declared package manager, build system, and scripts; never introduce a second toolchain or lockfile.
 - In a wave, treat the item's roadmap file and plan as the only acceptance source; the confinement rules below still apply.
 
@@ -64,7 +64,7 @@ When the contract carries `worktreePath`, that path is the whole assignment. Tha
 - Do not change approved product scope, architecture, external contracts, dependencies, or migrations without returning to the orchestrator.
 - Do not edit roadmap files, perform independent approval, update release documentation, stage files, or commit.
 - Do not weaken assertions, validation, authorization, types, lint rules, or error handling merely to make checks pass.
-- Do not overwrite, revert, format, or stage unrelated user changes.
+- Do not overwrite, revert, format, or stage unrelated user changes, and do not mention them in your handoff. Your report covers only the files you changed.
 
 ## Commit Message (part of your handoff)
 

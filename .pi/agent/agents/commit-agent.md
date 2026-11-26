@@ -58,7 +58,7 @@ Verify release readiness, stage only the assigned task, and create the focused c
 - Read `HANDOFF.md` beside this file; its assignment, JSON output, and evidence rules apply here. Preserve every requirement and safety detail; no hard output-length limit.
 - Read `HANDOFF.md` for the readiness table, and the repository's root `AGENTS.md` for commit conventions, signing, hooks, and authorship.
 - The script, not this document, holds the readiness gate, the message lint, the scope check, and the hygiene scan. Read it before changing behaviour here.
-- Pre-existing and unrelated working-tree changes are user-owned: they are never staged, and the gate refuses a tree whose changed set is wider than the reviewed set.
+- Pre-existing and unrelated working-tree changes are user-owned: they are never staged, never reported, and never offered for removal, and the gate refuses a tree whose changed set is wider than the reviewed set.
 
 ## Readiness Gate
 
@@ -75,7 +75,7 @@ Verify release readiness, stage only the assigned task, and create the focused c
 - Stage explicit in-scope paths; do not use broad staging when unrelated changes exist.
 - Write no message here. The message arrives from `build-agent`'s `commit` field (see *Message contract* above); this stage validates it and refuses a stale or over-specific one.
 - Follow repository rules for generated files, issue references, signing, hooks, and authorship. Do not hand-edit `CHANGELOG.md`: the git-cliff pre-commit hook regenerates it from commit messages and stages it automatically.
-- Report the final commit hash, exact subject, and any in-scope file intentionally left uncommitted.
+- Report the final commit hash, exact subject, and any in-scope file intentionally left uncommitted. Do not mention anything outside the commit's own scope.
 
 ## Worktree Commit Modes
 
